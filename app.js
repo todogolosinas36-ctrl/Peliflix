@@ -1,161 +1,210 @@
 /**
  * ============================================================================
- * PelisFlix - Plataforma de Streaming Web
+ * Peloflix â€” LÃ³gica de aplicaciÃ³n
  * ============================================================================
- * Optimizada para Smart TV (Android TV, WebOS, Tizen) y Pantallas Táctiles Móviles.
- * - Navegación espacial D-Pad (Flechas Arriba/Abajo/Izquierda/Derecha, Enter, Volver).
- * - Auto-scroll centrado en el elemento activo para visión a 3 metros.
- * - Menú lateral sin dependencia exclusiva de hover (abre/cierra por botón, control remoto o touch).
- * - Reproductor multiservidor con corte de sonido inmediato en iframe.src.
+ * Interfaz de streaming optimizada para Smart TV (Android TV, WebOS, Tizen) y
+ * pantallas tÃ¡ctiles.
+ *
+ * Principios de navegaciÃ³n en esta app:
+ *  - En un TV el foco ES el cursor: todo elemento interactivo es alcanzable
+ *    con las flechas y se auto-centra al recibir foco.
+ *  - Nada depende exclusivamente de `:hover`.
+ *  - "Volver" / Escape siempre sube un nivel: player â†’ modal â†’ sidebar â†’ app.
+ *
+ * @module Peloflix
  */
 
-// ============================================================================
-// 1. CONFIGURACIÓN Y API KEY
-// ============================================================================
+'use strict';
 
+/* ==========================================================================
+ * 1. CONFIGURACIÃ“N
+ * ========================================================================== */
+
+/**
+ * Clave de API por defecto. Se puede sobreescribir desde Ajustes (localStorage).
+ * @type {string}
+ */
 const API_KEY = 'TU_API_KEY_AQUI';
-const ADMIN_PIN = 'Pia26';
+
+/** Clave bajo la que se persiste la API key. */
+const STORAGE_KEY = 'peloflix_tmdb_api_key';
 
 const CONFIG = {
-  getApiKey: () => {
-    const localKey = localStorage.getItem('pelisflix_tmdb_api_key');
-    if (localKey && localKey.trim() !== '') return localKey.trim();
-    if (API_KEY && API_KEY !== 'TU_API_KEY_AQUI' && API_KEY.trim() !== '') return API_KEY.trim();
+  /** Resuelve la API key activa con prioridad a localStorage. */
+  getApiKey() {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored && stored.trim()) return stored.trim();
+    if (API_KEY && API_KEY !== 'TU_API_KEY_AQUI' && API_KEY.trim()) return API_KEY.trim();
     return '';
   },
+
   BASE_URL: 'https://api.themoviedb.org/3',
   IMAGE_BASE_URL: 'https://image.tmdb.org/t/p/w500',
   BACKDROP_BASE_URL: 'https://image.tmdb.org/t/p/original',
   LANGUAGE: 'es-MX',
 
-  // Servidores de Embed optimizados para Audio Latino y Subtítulos en Español
+  /**
+   * Proveedores de embed.
+   * `UI: true` marca los que tienen botÃ³n en el reproductor â€” el ciclo
+   * automÃ¡tico del botÃ³n "Cambiar" solo recorre estos para no dejar al
+   * usuario en un servidor sin forma de volver.
+   */
   SERVERS: {
-    vidsrc: {
-      name: 'Servidor 1 (VidSrc) - Rápido HD',
-      badge: 'VidSrc HD',
-      getMovieUrl: (id) => `https://vidsrc.to/embed/movie/${id}`,
-      getTvUrl: (id, s, e) => `https://vidsrc.to/embed/tv/${id}/${s}/${e}`
+    unlimplay: {
+      name: 'UNLIMPLAY',
+      label: 'Multilenguaje',
+      badge: 'Multi',
+      badgeClass: 'badge-multi',
+      getMovieUrl: (id) => `https://unlimplay.com/embed/movie/${id}`,
+      getTvUrl: (id, s, e) => `https://unlimplay.com/embed/tv/${id}/${s}/${e}`
     },
     embed_su: {
-      name: 'Servidor 2 (Embed.su) - Multi-Audio & Sub',
-      badge: 'Multi-Audio / Sub',
+      name: 'Embed.su',
+      label: 'Multilenguaje',
+      badge: 'Multi',
+      badgeClass: 'badge-multi',
       getMovieUrl: (id) => `https://embed.su/embed/movie/${id}`,
       getTvUrl: (id, s, e) => `https://embed.su/embed/tv/${id}/${s}/${e}`
     },
-    vidsrc_pro: {
-      name: 'Servidor 3 (VidSrc PRO) - Calidad 1080p',
-      badge: 'VidSrc PRO',
-      getMovieUrl: (id) => `https://vidsrc.pro/embed/movie/${id}`,
-      getTvUrl: (id, s, e) => `https://vidsrc.pro/embed/tv/${id}/${s}/${e}`
-    },
-    vidsrc_vip: {
-      name: 'Servidor 4 (VidSrc VIP) - Alta Estabilidad',
-      badge: 'VidSrc VIP',
-      getMovieUrl: (id) => `https://vidsrc.vip/embed/movie/${id}`,
-      getTvUrl: (id, s, e) => `https://vidsrc.vip/embed/tv/${id}/${s}/${e}`
-    },
-    autoembed: {
-      name: 'Servidor 5 (AutoEmbed) - Audio Latino & Sub',
-      badge: 'Latino & Sub',
-      getMovieUrl: (id) => `https://player.autoembed.cc/embed/movie/${id}`,
-      getTvUrl: (id, s, e) => `https://player.autoembed.cc/embed/tv/${id}/${s}/${e}`
-    },
     multiembed: {
-      name: 'Servidor 6 (MultiEmbed) - Español & Multi-idioma',
-      badge: 'Multi-idioma / ES',
-      getMovieUrl: (id) => `https://multiembed.mov/?video_id=${id}&tmdb=1`,
-      getTvUrl: (id, s, e) => `https://multiembed.mov/?video_id=${id}&tmdb=1&s=${s}&e=${e}`
+      name: 'MultiEmbed',
+      label: 'Latino / Multi',
+      badge: 'Latino',
+      badgeClass: 'badge-latino',
+      getMovieUrl: (id) => `https://multiembed.mov/directstream.php?video_id=${id}&tmdb=1`,
+      getTvUrl: (id, s, e) => `https://multiembed.mov/directstream.php?video_id=${id}&tmdb=1&s=${s}&e=${e}`
     }
   },
 
-  FALLBACK_POSTER: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="300" height="450" viewBox="0 0 300 450"><rect fill="%231a1a1a" width="300" height="450"/><text fill="%23777" font-family="sans-serif" font-size="20" dy="10.5" font-weight="bold" x="50%" y="50%" text-anchor="middle">PelisFlix</text></svg>'
+  /** Orden de rotaciÃ³n del botÃ³n "Cambiar". */
+  get SERVER_CYCLE() {
+    return Object.keys(this.SERVERS);
+  },
+
+  /** Poster de reserva cuando TMDb no devuelve imagen. */
+  FALLBACK_POSTER: 'data:image/svg+xml;utf8,' + encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="300" height="450" viewBox="0 0 300 450">' +
+    '<rect fill="#2f2f2f" width="300" height="450"/>' +
+    '<text fill="#808080" font-family="sans-serif" font-size="26" font-weight="bold" ' +
+    'x="50%" y="50%" text-anchor="middle">Peloflix</text></svg>'
+  ),
+
+  /** Genera un logo de reserva con el nombre del canal. */
+  fallbackLogo(name, width = 300, height = 300) {
+    const label = String(name).replace(/[<>&"']/g, '');
+    return 'data:image/svg+xml;utf8,' + encodeURIComponent(
+      `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">` +
+      `<rect fill="#232323" width="${width}" height="${height}"/>` +
+      `<text fill="#E50914" font-family="sans-serif" font-size="${Math.round(width / 12)}" font-weight="bold" ` +
+      `x="50%" y="50%" text-anchor="middle">${label}</text></svg>`
+    );
+  }
 };
 
-// ============================================================================
-// 2. ESTADO GLOBAL DE LA APLICACIÓN
-// ============================================================================
+/* ==========================================================================
+ * 2. ESTADO GLOBAL
+ * ========================================================================== */
+
 const state = {
+  /** PestaÃ±a activa: 'movie' | 'tv' | 'anime' | 'cartoons' | 'live' */
   currentTab: 'movie',
   currentPage: 1,
   totalPages: 1,
-  searchQuery: '',
-  mediaItems: [],
   featuredHeroItem: null,
   activeItemDetails: null,
-  lastFocusedElementBeforeModal: null,
+  lastFocusedElement: null,
 
-  currentPlayback: {
-    type: null,
-    id: null,
-    season: 1,
-    episode: 1,
-    title: ''
-  },
-  selectedServer: 'vidsrc',
+  /** Proveedor de embed seleccionado para la reproducciÃ³n actual. */
+  selectedServer: 'unlimplay',
+  /** Temporada visible en el selector de episodios. */
   activeSeason: 1,
 
-  // Estado del Explorador de Categorías
+  /** Estado del explorador de gÃ©neros. */
   explorer: {
     activeGenreId: null,
     currentPage: 1,
     totalPages: 1
+  },
+
+  /**
+   * Tokens de concurrencia. Cada navegaciÃ³n asÃ­ncrona captura el valor actual
+   * y lo compara al resolver: si cambiÃ³, su respuesta se descarta. Sin esto,
+   * una bÃºsqueda lenta puede pisar los resultados de una mÃ¡s reciente.
+   */
+  tokens: {
+    tab: 0,
+    search: 0,
+    modal: 0,
+    episodes: 0,
+    explorer: 0,
+    rows: 0
   }
 };
 
-// ============================================================================
-// 2.B CONFIGURACIÓN DE FILAS NETFLIX Y GÉNEROS TMDB
-// ============================================================================
-
+/** Filas del layout tipo Netflix para la pestaÃ±a PelÃ­culas. */
 const HOME_ROWS = [
-  { id: 'estrenos', scrollId: 'row-scroll-estrenos', title: 'Películas Estrenos 2026', endpoint: '/discover/movie', params: { primary_release_year: 2026, sort_by: 'popularity.desc' } },
-  { id: 'accion', scrollId: 'row-scroll-accion', title: 'Acción Sin Límites', endpoint: '/discover/movie', params: { with_genres: 28, sort_by: 'popularity.desc' } },
-  { id: 'comedia', scrollId: 'row-scroll-comedia', title: 'Comedia para Reír', endpoint: '/discover/movie', params: { with_genres: 35, sort_by: 'popularity.desc' } },
-  { id: 'terror', scrollId: 'row-scroll-terror', title: 'Terror y Suspenso', endpoint: '/discover/movie', params: { with_genres: 27, sort_by: 'popularity.desc' } }
+  {
+    scrollId: 'row-scroll-estrenos',
+    endpoint: '/discover/movie',
+    params: () => ({
+      primary_release_year: new Date().getFullYear(),
+      sort_by: 'popularity.desc'
+    })
+  },
+  {
+    scrollId: 'row-scroll-accion',
+    endpoint: '/discover/movie',
+    params: () => ({ with_genres: 28, sort_by: 'popularity.desc' })
+  },
+  {
+    scrollId: 'row-scroll-comedia',
+    endpoint: '/discover/movie',
+    params: () => ({ with_genres: 35, sort_by: 'popularity.desc' })
+  },
+  {
+    scrollId: 'row-scroll-terror',
+    endpoint: '/discover/movie',
+    params: () => ({ with_genres: 27, sort_by: 'popularity.desc' })
+  }
 ];
 
+/** GÃ©neros de TMDb para el explorador. */
 const TMDB_GENRES = [
-  { id: 28, name: 'Acción', icon: 'fa-solid fa-explosion' },
+  { id: 28, name: 'AcciÃ³n', icon: 'fa-solid fa-explosion' },
   { id: 12, name: 'Aventura', icon: 'fa-solid fa-mountain-sun' },
-  { id: 16, name: 'Animación', icon: 'fa-solid fa-wand-magic-sparkles' },
+  { id: 16, name: 'AnimaciÃ³n', icon: 'fa-solid fa-wand-magic-sparkles' },
   { id: 35, name: 'Comedia', icon: 'fa-solid fa-face-laugh-squint' },
   { id: 80, name: 'Crimen', icon: 'fa-solid fa-user-secret' },
   { id: 99, name: 'Documental', icon: 'fa-solid fa-clapperboard' },
   { id: 18, name: 'Drama', icon: 'fa-solid fa-masks-theater' },
   { id: 10751, name: 'Familia', icon: 'fa-solid fa-people-roof' },
-  { id: 14, name: 'Fantasía', icon: 'fa-solid fa-hat-wizard' },
+  { id: 14, name: 'FantasÃ­a', icon: 'fa-solid fa-hat-wizard' },
   { id: 36, name: 'Historia', icon: 'fa-solid fa-landmark' },
   { id: 27, name: 'Terror', icon: 'fa-solid fa-ghost' },
-  { id: 10402, name: 'Música', icon: 'fa-solid fa-music' },
+  { id: 10402, name: 'MÃºsica', icon: 'fa-solid fa-music' },
   { id: 9648, name: 'Misterio', icon: 'fa-solid fa-magnifying-glass' },
   { id: 10749, name: 'Romance', icon: 'fa-solid fa-heart' },
-  { id: 878, name: 'Ciencia Ficción', icon: 'fa-solid fa-rocket' },
+  { id: 878, name: 'Ciencia FicciÃ³n', icon: 'fa-solid fa-rocket' },
   { id: 53, name: 'Suspense', icon: 'fa-solid fa-bolt' },
   { id: 10752, name: 'Guerra', icon: 'fa-solid fa-shield-halved' },
   { id: 37, name: 'Western', icon: 'fa-solid fa-hat-cowboy' }
 ];
 
-// ============================================================================
-// 3. REFERENCIAS AL DOM
-// ============================================================================
+/* ==========================================================================
+ * 3. REFERENCIAS AL DOM
+ * ========================================================================== */
+
 const dom = {
   header: document.getElementById('main-header'),
   brandLogo: document.getElementById('brand-logo'),
   headerSearchBtn: document.getElementById('header-search-btn'),
-  sidebarToggleBtn: document.getElementById('sidebar-toggle-btn'),
-  sidebarOverlay: document.getElementById('sidebar-overlay'),
+  headerSettingsBtn: document.getElementById('header-settings-btn'),
+  rowYearLabel: document.getElementById('row-year-label'),
 
-  // Barra de Pestañas Sub-Navbar
   subNavbar: document.getElementById('sub-navbar'),
   navTabButtons: document.querySelectorAll('.nav-tab-btn'),
 
-  // Panel Lateral Derecho
-  rightSidebar: document.getElementById('right-sidebar'),
-  sidebarEdgeTab: document.getElementById('sidebar-edge-tab'),
-  sidebarCloseBtn: document.getElementById('sidebar-close-btn'),
-  sidebarNavButtons: document.querySelectorAll('.sidebar-nav-btn'),
-  sidebarSearchBtn: document.getElementById('sidebar-search-btn'),
-
-  // Modal Dedicado de Búsqueda
+  // BÃºsqueda
   searchModal: document.getElementById('search-modal'),
   searchModalCloseBtn: document.getElementById('search-modal-close-btn'),
   modalSearchInput: document.getElementById('modal-search-input'),
@@ -164,35 +213,20 @@ const dom = {
   searchStatusText: document.getElementById('search-status-text'),
   searchModalLoader: document.getElementById('search-modal-loader'),
 
-  // Configuración y Autenticación PIN
-  configMenuBtn: document.getElementById('config-menu-btn'),
-  pinModal: document.getElementById('pin-modal'),
-  pinCloseBtn: document.getElementById('pin-close-btn'),
-  pinForm: document.getElementById('pin-form'),
-  pinInput: document.getElementById('pin-input'),
-  pinError: document.getElementById('pin-error'),
-  pinSubmitBtn: document.getElementById('pin-submit-btn'),
-  pinCancelBtn: document.getElementById('pin-cancel-btn'),
-  settingsModal: document.getElementById('settings-modal'),
-  settingsCloseBtn: document.getElementById('settings-close-btn'),
-
-  // Módulo de API Key
-  apiStatusBadge: document.getElementById('api-status-badge'),
-  apiKeyInput: document.getElementById('api-key-input'),
-  saveApiKeyBtn: document.getElementById('save-api-key-btn'),
-  clearApiKeyBtn: document.getElementById('clear-api-key-btn'),
-
-  // Hero Banner
+  // Hero
   heroBanner: document.getElementById('hero-banner'),
   heroBackdrop: document.getElementById('hero-backdrop'),
-  heroBadge: document.getElementById('hero-badge'),
   heroTitle: document.getElementById('hero-title'),
   heroMeta: document.getElementById('hero-meta'),
   heroOverview: document.getElementById('hero-overview'),
   heroPlayBtn: document.getElementById('hero-play-btn'),
   heroInfoBtn: document.getElementById('hero-info-btn'),
 
-  // Catálogo y Grilla
+  // Filas Netflix
+  homeRowsContainer: document.getElementById('home-rows-container'),
+  exploreAllBtn: document.getElementById('explore-all-btn'),
+
+  // CatÃ¡logo
   catalogSection: document.getElementById('catalog-section'),
   sectionTitle: document.getElementById('section-title'),
   sectionSubtitle: document.getElementById('section-subtitle'),
@@ -201,15 +235,7 @@ const dom = {
   loader: document.getElementById('loader'),
   loadMoreBtn: document.getElementById('load-more-btn'),
 
-  // Layout Netflix: Filas Horizontales
-  homeRowsContainer: document.getElementById('home-rows-container'),
-  rowScrollEstrenos: document.getElementById('row-scroll-estrenos'),
-  rowScrollAccion: document.getElementById('row-scroll-accion'),
-  rowScrollComedia: document.getElementById('row-scroll-comedia'),
-  rowScrollTerror: document.getElementById('row-scroll-terror'),
-  exploreAllBtn: document.getElementById('explore-all-btn'),
-
-  // Explorador de Categorías
+  // Explorador
   categoryExplorer: document.getElementById('category-explorer'),
   explorerBackBtn: document.getElementById('explorer-back-btn'),
   genreBtnGrid: document.getElementById('genre-btn-grid'),
@@ -218,7 +244,7 @@ const dom = {
   exploreGrid: document.getElementById('explore-grid'),
   exploreLoadMoreBtn: document.getElementById('explore-load-more-btn'),
 
-  // Modal Flotante
+  // Modal de tÃ­tulo
   mediaModal: document.getElementById('media-modal'),
   modalCloseBtn: document.getElementById('modal-close-btn'),
   modalHeroCover: document.getElementById('modal-hero-cover'),
@@ -233,11 +259,12 @@ const dom = {
   modalGenres: document.getElementById('modal-genres'),
   modalOverview: document.getElementById('modal-overview'),
 
-  // Reproductor Multiservidor
+  // Reproductor
   modalPlayerSection: document.getElementById('modal-player-section'),
-  playerTopBar: document.getElementById('player-top-bar') || document.querySelector('.player-top-bar'),
+  playerTopBar: document.getElementById('player-top-bar'),
   playerPlayingTitle: document.getElementById('player-playing-title'),
-  serverSelect: document.getElementById('server-select'),
+  serverBtnGroup: document.getElementById('server-btn-group'),
+  videoSourcesContainer: document.getElementById('video-sources-container'),
   quickSwitchServerBtn: document.getElementById('quick-switch-server-btn'),
   serverActiveBadge: document.getElementById('server-active-badge'),
   serverBadgeText: document.getElementById('server-badge-text'),
@@ -245,694 +272,509 @@ const dom = {
   videoPlayerIframe: document.getElementById('video-player'),
   liveTvPlayer: document.getElementById('liveTvPlayer'),
 
-  // Series de TV
+  // Episodios
   modalTvEpisodes: document.getElementById('modal-tv-episodes'),
   seasonSelect: document.getElementById('season-select'),
   episodesLoader: document.getElementById('episodes-loader'),
   episodesContainer: document.getElementById('episodes-container'),
 
-  // Toast
   toast: document.getElementById('toast')
 };
 
-// Instancia global de Hls.js para reproducción IPTV
+/** Instancia de HLS.js para TV en vivo. */
 let hlsInstance = null;
+/** Temporizador de auto-ocultado de la barra del reproductor. */
+let playerControlsTimer = null;
+/** Referencia al <script> de HLS.js, para no duplicarlo. */
+let hlsLoadingPromise = null;
 
-// ============================================================================
-// 4. DATOS DE DEMOSTRACIÓN (FALLBACK INMEDIATO)
-// ============================================================================
-const DEMO_ITEMS = [
-  // Películas
-  {
-    id: 157336,
-    title: 'Interstellar',
-    media_type: 'movie',
-    category: 'movie',
-    overview: 'Un grupo de científicos y exploradores viajan a través de un agujero de gusano para encontrar un nuevo hogar para la humanidad.',
-    poster_path: '/gEU2QniE6E77NI6lCU6MxlNBvIx.jpg',
-    backdrop_path: '/xJHokMbljvjADYdit5fK5VQsXEG.jpg',
-    vote_average: 8.4,
-    release_date: '2014-11-05'
-  },
-  {
-    id: 693134,
-    title: 'Dune: Parte Dos',
-    media_type: 'movie',
-    category: 'movie',
-    overview: 'Paul Atreides se une a Chani y a los Fremen mientras busca venganza contra los conspiradores que destruyeron a su familia.',
-    poster_path: '/8b8R8l88Qje9dn9OE8PY05Nx1S8.jpg',
-    backdrop_path: '/xOMo8BRK7PfcJv9JCnx7s520048.jpg',
-    vote_average: 8.2,
-    release_date: '2024-02-27'
-  },
-  {
-    id: 155,
-    title: 'The Dark Knight',
-    media_type: 'movie',
-    category: 'movie',
-    overview: 'Batman debe aceptar uno de los mayores desafíos de su capacidad para luchar contra el Joker, un criminal despiadado que siembra el caos.',
-    poster_path: '/qJ2tW6WMUDux911r6m7haRef0WH.jpg',
-    backdrop_path: '/dqK9Hag1054tghRQSqLSfrkvQnA.jpg',
-    vote_average: 8.5,
-    release_date: '2008-07-16'
-  },
-  {
-    id: 872585,
-    title: 'Oppenheimer',
-    media_type: 'movie',
-    category: 'movie',
-    overview: 'La historia del físico J. Robert Oppenheimer y su liderazgo en el Proyecto Manhattan que cambió la historia del mundo para siempre.',
-    poster_path: '/8Gxv8gSFCU0XGDykEGv7zR1n2ua.jpg',
-    backdrop_path: '/fm6KqXpk3M2HVveHwCrBSSBaO0V.jpg',
-    vote_average: 8.1,
-    release_date: '2023-07-19'
-  },
+/* ==========================================================================
+ * 4. UTILIDADES
+ * ========================================================================== */
 
-  // Series
-  {
-    id: 66732,
-    name: 'Stranger Things',
-    title: 'Stranger Things',
-    media_type: 'tv',
-    category: 'tv',
-    overview: 'Tras la misteriosa desaparición de un niño, un pequeño pueblo descubre un secreto con experimentos clasificados y fuerzas sobrenaturales.',
-    poster_path: '/49WJfeN0moxb9IPfGn8AIqMGskD.jpg',
-    backdrop_path: '/56v2KjBlU4XaOv9rVYEQypROD7P.jpg',
-    vote_average: 8.6,
-    first_air_date: '2016-07-15',
-    number_of_seasons: 4
-  },
-  {
-    id: 1399,
-    name: 'Game of Thrones',
-    title: 'Juego de Tronos',
-    media_type: 'tv',
-    category: 'tv',
-    overview: 'Siete familias nobles luchan por el control de la mítica tierra de Poniente en una violenta batalla por el Trono de Hierro.',
-    poster_path: '/u3bZgnGQ9T01sWNhyveQz0wH0Hl.jpg',
-    backdrop_path: '/2OMB0ynKlyIenMJWI2Dy9IWT4c.jpg',
-    vote_average: 8.4,
-    first_air_date: '2011-04-17',
-    number_of_seasons: 8
-  },
-  {
-    id: 1396,
-    name: 'Breaking Bad',
-    title: 'Breaking Bad',
-    media_type: 'tv',
-    category: 'tv',
-    overview: 'Un profesor de química de secundaria con cáncer terminal recurre a la fabricación de metanfetamina para asegurar el futuro de su familia.',
-    poster_path: '/ggFHVNu6YYI5L9pCfOacjizRGt.jpg',
-    backdrop_path: '/tsRy63Mu5cu8etL1X7ZLyf7UP1M.jpg',
-    vote_average: 8.9,
-    first_air_date: '2008-01-20',
-    number_of_seasons: 5
-  },
+const PLAYER_CONTROLS_TIMEOUT_MS = 3000;
 
-  // Anime
-  {
-    id: 1429,
-    name: 'Attack on Titan',
-    title: 'Ataque a los Titanes (Shingeki no Kyojin)',
-    media_type: 'tv',
-    category: 'anime',
-    overview: 'La humanidad vive dentro de ciudades rodeadas por enormes muros que los protegen de los Titanes. Eren Jaeger jura erradicarlos tras la caída de su hogar.',
-    poster_path: '/aiy35EvapPV79Q87zyiyYKdwAI.jpg',
-    backdrop_path: '/y74tlGv7z4EFTj8i2Zq60jIqjP.jpg',
-    vote_average: 8.9,
-    first_air_date: '2013-04-07',
-    number_of_seasons: 4
-  },
-  {
-    id: 85937,
-    name: 'Demon Slayer: Kimetsu no Yaiba',
-    title: 'Demon Slayer (Kimetsu no Yaiba)',
-    media_type: 'tv',
-    category: 'anime',
-    overview: 'Tanjiro Kamado emprende un viaje para vengar a su familia asesinada y buscar una cura para su hermana Nezuko, convertida en demonio.',
-    poster_path: '/xUfRZu2mi8jH6SzQEJGP6tjBuYj.jpg',
-    backdrop_path: '/nTvM4mhqZlHIvUkI1gVnWumQU84.jpg',
-    vote_average: 8.7,
-    first_air_date: '2019-04-06',
-    number_of_seasons: 4
-  },
-  {
-    id: 12971,
-    name: 'Dragon Ball Z',
-    title: 'Dragon Ball Z',
-    media_type: 'tv',
-    category: 'anime',
-    overview: 'Goku y los Guerreros Z defienden la Tierra de poderosos villanos galácticos como los Saiyajins, Freezer, Cell y Majin Buu.',
-    poster_path: '/dBsjo54k9zF4AocHwL7Hj03bJ3n.jpg',
-    backdrop_path: '/f53JvlEgqvVoq7Tz6p6u8Y0NdrM.jpg',
-    vote_average: 8.3,
-    first_air_date: '1989-04-26',
-    number_of_seasons: 9
-  },
+/**
+ * Enfoca un elemento y lo centra en pantalla (lectura a 3 metros en TV).
+ * @param {HTMLElement|null} element
+ */
+function focusAndCenter(element) {
+  if (!element) return;
+  element.focus({ preventScroll: true });
+  element.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+}
 
-  // Dibujos Animados
-  {
-    id: 60625,
-    name: 'Rick and Morty',
-    title: 'Rick y Morty',
-    media_type: 'tv',
-    category: 'cartoons',
-    overview: 'Un científico brillante pero alcohólico y su temeroso nieto viajan por dimensiones infinitas enfrentando aventuras cósmicas.',
-    poster_path: '/cvhNj9eoRBe5SxjardzrVZNTISn.jpg',
-    backdrop_path: '/uK9uV0j2J8eK7s6W6t8M9Qe9z6M.jpg',
-    vote_average: 8.7,
-    first_air_date: '2013-12-02',
-    number_of_seasons: 7
-  },
-  {
-    id: 94605,
-    name: 'Arcane',
-    title: 'Arcane',
-    media_type: 'tv',
-    category: 'cartoons',
-    overview: 'En medio del conflicto entre las ciudades gemelas de Piltóver y Zaun, dos hermanas luchan en bandos opuestos de una guerra tecnológica.',
-    poster_path: '/fqldf2t8ztc9aiwn3k6mlX3tvRT.jpg',
-    backdrop_path: '/v4y1m1scvK4x2K0tqL68Xm8Pj6J.jpg',
-    vote_average: 8.7,
-    first_air_date: '2021-11-06',
-    number_of_seasons: 2
-  },
-  {
-    id: 456,
-    name: 'The Simpsons',
-    title: 'Los Simpson',
-    media_type: 'tv',
-    category: 'cartoons',
-    overview: 'Las sátiras y aventuras de la emblemática familia Simpson y los habitantes de la ciudad de Springfield.',
-    poster_path: '/k55w9T3m72qV3xG3f2y6f4g.jpg',
-    backdrop_path: '/hpU2cHC9tk90hG7neKaCVNm7DY.jpg',
-    vote_average: 8.0,
-    first_air_date: '1989-12-17',
-    number_of_seasons: 35
-  }
-];
+/**
+ * Retrasa la ejecuciÃ³n de una funciÃ³n.
+ * @template {Function} T
+ * @param {T} fn
+ * @param {number} delay
+ * @returns {T & {cancel: () => void}}
+ */
+function debounce(fn, delay = 350) {
+  let timer;
+  const wrapped = function (...args) {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn.apply(this, args), delay);
+  };
+  wrapped.cancel = () => clearTimeout(timer);
+  return wrapped;
+}
 
-// ============================================================================
-// 4.B BASE DE DATOS LOCAL DE CANALES DE TV EN VIVO (IPTV)
-// ============================================================================
-const liveChannels = [
-  { 
-    id: 'tv1', 
-    name: 'Telefe', 
-    category: 'Nacional', 
-    logo: 'https://i.imgur.com/logo_telefe.png', 
-    stream_url: 'URL_M3U8_AQUI' 
-  },
-  { 
-    id: 'tv2', 
-    name: 'TV Pública', 
-    category: 'Nacional', 
-    logo: 'https://i.imgur.com/logo_tvp.png', 
-    stream_url: 'URL_M3U8_AQUI' 
-  },
-  { 
-    id: 'tv3', 
-    name: 'Canal 10 Tucumán', 
-    category: 'Regional', 
-    logo: 'https://i.imgur.com/logo_c10.png', 
-    stream_url: 'URL_M3U8_AQUI' 
-  }
-];
+/**
+ * Crea un elemento con clase y texto en una sola llamada.
+ * Evita `innerHTML` con datos remotos.
+ * @param {string} tag
+ * @param {string} [className]
+ * @param {string} [text]
+ * @returns {HTMLElement}
+ */
+function makeEl(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined && text !== null) node.textContent = String(text);
+  return node;
+}
 
-// Alias para compatibilidad con módulos internos
-const LIVE_CHANNELS = liveChannels;
+/**
+ * Crea un icono de Font Awesome.
+ * @param {string} iconClass
+ * @returns {HTMLElement}
+ */
+function makeIcon(iconClass) {
+  const i = document.createElement('i');
+  i.className = iconClass;
+  i.setAttribute('aria-hidden', 'true');
+  return i;
+}
 
-// ============================================================================
-// 5. CONSUMO DE API TMDB
-// ============================================================================
+/**
+ * AÃ±ade un icono + texto a un contenedor.
+ * @param {HTMLElement} parent
+ * @param {string} iconClass
+ * @param {string} text
+ */
+function appendIconText(parent, iconClass, text) {
+  parent.appendChild(makeIcon(iconClass));
+  parent.appendChild(document.createTextNode(` ${text}`));
+}
 
+/**
+ * Extrae el aÃ±o de una fecha ISO.
+ * @param {string} [dateStr]
+ * @returns {string}
+ */
+function formatYear(dateStr) {
+  return dateStr ? String(dateStr).substring(0, 4) : 'N/D';
+}
+
+/**
+ * Normaliza un resultado de TMDb a un tÃ­tulo reproducible.
+ * @param {object} item
+ * @returns {{id: number, title: string, mediaType: string, year: string, rating: string, overview: string, poster: string, backdrop: string}|null}
+ */
+function normalizeItem(item) {
+  if (!item || item.media_type === 'person') return null;
+  if (!item.id || (!item.title && !item.name)) return null;
+
+  // TMDb no siempre incluye media_type en /discover; se deduce por la forma.
+  const isMovie = item.media_type
+    ? item.media_type === 'movie'
+    : Boolean(item.title && !item.name);
+
+  const title = item.title || item.name;
+
+  return {
+    id: item.id,
+    title,
+    mediaType: isMovie ? 'movie' : 'tv',
+    typeLabel: isMovie ? 'PelÃ­cula' : 'Serie',
+    year: formatYear(item.release_date || item.first_air_date),
+    rating: item.vote_average ? Number(item.vote_average).toFixed(1) : 'S/R',
+    overview: item.overview || '',
+    poster: item.poster_path ? CONFIG.IMAGE_BASE_URL + item.poster_path : CONFIG.FALLBACK_POSTER,
+    backdrop: item.backdrop_path || item.poster_path || ''
+  };
+}
+
+/**
+ * Â¿Este elemento estÃ¡ realmente en pantalla? (no oculto por CSS)
+ * @param {HTMLElement} el
+ * @returns {boolean}
+ */
+function isVisible(el) {
+  return Boolean(el) && el.offsetParent !== null && !el.classList.contains('hidden');
+}
+
+/**
+ * Muestra un mensaje breve.
+ * @param {string} message
+ * @param {number} [duration]
+ */
+let toastTimer = null;
+function showToast(message, duration = 3200) {
+  clearTimeout(toastTimer);
+  dom.toast.textContent = message;
+  dom.toast.classList.remove('hidden');
+  toastTimer = setTimeout(() => dom.toast.classList.add('hidden'), duration);
+}
+
+/**
+ * Bloquea o desbloquea el scroll segÃºn haya algÃºn modal abierto.
+ * Se llama tras cada apertura/cierre para que el estado sea siempre correcto
+ * aunque se encadenen varios modales.
+ */
+function syncScrollLock() {
+  const modals = [dom.searchModal, dom.mediaModal];
+  const anyOpen = modals.some((m) => m && !m.classList.contains('hidden'));
+  document.body.style.overflow = anyOpen ? 'hidden' : '';
+}
+
+/** Muestra u oculta un elemento con la clase `hidden`. */
+function toggleHidden(element, hidden) {
+  if (element) element.classList.toggle('hidden', hidden);
+}
+
+/* ==========================================================================
+ * 5. CAPA DE DATOS (TMDb)
+ * ========================================================================== */
+
+/**
+ * PeticiÃ³n a TMDb v3.
+ * @param {string} endpoint
+ * @param {object} [params]
+ * @returns {Promise<object>}
+ * @throws {Error} NO_API_KEY | INVALID_API_KEY | HTTP <status>
+ */
 async function fetchFromTMDb(endpoint, params = {}) {
-  const currentKey = CONFIG.getApiKey();
-  if (!currentKey) throw new Error('NO_API_KEY');
+  const key = CONFIG.getApiKey();
+  if (!key) throw new Error('NO_API_KEY');
 
-  const queryParams = new URLSearchParams({
-    api_key: currentKey,
+  // URLSearchParams ya codifica los valores: no usar encodeURIComponent aquÃ­.
+  const query = new URLSearchParams({
+    api_key: key,
     language: CONFIG.LANGUAGE,
     ...params
   });
 
-  const url = `${CONFIG.BASE_URL}${endpoint}?${queryParams.toString()}`;
+  const url = `${CONFIG.BASE_URL}${endpoint}?${query.toString()}`;
 
+  let response;
   try {
-    const response = await fetch(url);
-    if (!response.ok) {
-      if (response.status === 401) throw new Error('INVALID_API_KEY');
-      throw new Error(`HTTP Error ${response.status}`);
-    }
-    return await response.json();
-  } catch (error) {
-    console.warn(`[TMDb] Error en petición a ${endpoint}:`, error.message);
-    throw error;
+    response = await fetch(url);
+  } catch (networkError) {
+    throw new Error('NETWORK_ERROR');
   }
+
+  if (response.status === 401) throw new Error('INVALID_API_KEY');
+  if (!response.ok) throw new Error(`HTTP_${response.status}`);
+
+  return response.json();
 }
 
-async function getTrending(page = 1) {
-  return await fetchFromTMDb('/trending/all/week', { page });
-}
+/** @param {number} page */
+const getSeries = (page = 1) =>
+  fetchFromTMDb('/discover/tv', { sort_by: 'popularity.desc', page });
 
-async function getMovies(page = 1) {
-  return await fetchFromTMDb('/discover/movie', {
-    sort_by: 'popularity.desc',
-    page
-  });
-}
-
-async function getSeries(page = 1) {
-  return await fetchFromTMDb('/discover/tv', {
-    sort_by: 'popularity.desc',
-    page
-  });
-}
-
-async function getAnime(page = 1) {
-  return await fetchFromTMDb('/discover/tv', {
+/**
+ * Anime: TMDb v3 solo expone `with_original_language` en /discover/tv.
+ * @param {number} page
+ */
+const getAnime = (page = 1) =>
+  fetchFromTMDb('/discover/tv', {
     with_original_language: 'ja',
     with_genres: '16',
     sort_by: 'popularity.desc',
     page
   });
-}
 
+/**
+ * AnimaciÃ³n occidental. No existe un parÃ¡metro "sin idioma originals" en la
+ * v3, asÃ­ que se pide toda la animaciÃ³n y se descarta el anime en cliente
+ * (evita duplicar la pestaÃ±a "Anime").
+ * @param {number} page
+ */
 async function getCartoons(page = 1) {
-  return await fetchFromTMDb('/discover/tv', {
+  const data = await fetchFromTMDb('/discover/tv', {
     with_genres: '16',
-    without_original_languages: 'ja',
     sort_by: 'popularity.desc',
     page
   });
+  data.results = (data.results || []).filter(
+    (i) => i.original_language && i.original_language !== 'ja'
+  );
+  return data;
 }
-
-async function searchMulti(query, page = 1) {
-  return await fetchFromTMDb('/search/multi', {
-    query: encodeURIComponent(query),
-    page,
-    include_adult: false
-  });
-}
-
-async function getMediaDetails(mediaType, id) {
-  return await fetchFromTMDb(`/${mediaType}/${id}`, {
-    append_to_response: 'credits,videos'
-  });
-}
-
-async function getSeasonEpisodes(tvId, seasonNumber) {
-  return await fetchFromTMDb(`/tv/${tvId}/season/${seasonNumber}`);
-}
-
-// ============================================================================
-// 6. UTILIDADES Y SISTEMA DE AUTO-SCROLL CONCENTRADO EN EL FOCO (SMART TV)
-// ============================================================================
 
 /**
- * Enfoca un elemento y lo centra automáticamente en la pantalla de la TV
+ * BÃºsqueda multilenguaje.
+ * @param {string} query
+ * @param {number} [page]
  */
-function focusAndCenter(element) {
-  if (!element) return;
-  element.focus();
-  element.scrollIntoView({
-    behavior: 'smooth',
-    block: 'center',
-    inline: 'center'
-  });
-}
+const searchMulti = (query, page = 1) =>
+  fetchFromTMDb('/search/multi', { query, page, include_adult: false });
 
-function debounce(func, delay = 400) {
-  let timer;
-  return function (...args) {
-    clearTimeout(timer);
-    timer = setTimeout(() => func.apply(this, args), delay);
-  };
-}
+/** @param {string} mediaType @param {number} id */
+const getMediaDetails = (mediaType, id) => fetchFromTMDb(`/${mediaType}/${id}`);
 
-function formatYear(dateStr) {
-  if (!dateStr) return 'N/D';
-  return dateStr.substring(0, 4);
-}
+/** @param {number} tvId @param {number} seasonNumber */
+const getSeasonEpisodes = (tvId, seasonNumber) =>
+  fetchFromTMDb(`/tv/${tvId}/season/${seasonNumber}`);
 
-function showToast(message, duration = 3000) {
-  dom.toast.textContent = message;
-  dom.toast.classList.remove('hidden');
-  setTimeout(() => {
-    dom.toast.classList.add('hidden');
-  }, duration);
-}
+/* ==========================================================================
+ * 6. DATOS DE DEMOSTRACIÃ“N (fallback sin API key)
+ * ========================================================================== */
 
-function updateApiKeyStatus() {
-  const currentKey = CONFIG.getApiKey();
-  if (currentKey) {
-    dom.apiStatusBadge.textContent = 'Key Activa';
-    dom.apiStatusBadge.className = 'api-status-badge badge-active';
-    dom.apiKeyInput.value = currentKey;
-  } else {
-    dom.apiStatusBadge.textContent = 'Modo Demo';
-    dom.apiStatusBadge.className = 'api-status-badge badge-demo';
-    dom.apiKeyInput.value = '';
+const DEMO_ITEMS = [
+  {
+    id: 157336, title: 'Interstellar', media_type: 'movie', category: 'movie',
+    overview: 'Un grupo de cientÃ­ficos y exploradores viajan a travÃ©s de un agujero de gusano para encontrar un nuevo hogar para la humanidad.',
+    poster_path: '/gEU2QniE6E77NI6lCU6MxlNBvIx.jpg', backdrop_path: '/xJHokMbljvjADYdit5fK5VQsXEG.jpg',
+    vote_average: 8.4, release_date: '2014-11-05'
+  },
+  {
+    id: 693134, title: 'Dune: Parte Dos', media_type: 'movie', category: 'movie',
+    overview: 'Paul Atreides se une a Chani y a los Fremen mientras busca venganza contra los conspiradores que destruyeron a su familia.',
+    poster_path: '/8b8R8l88Qje9dn9OE8PY05Nx1S8.jpg', backdrop_path: '/xOMo8BRK7PfcJv9JCnx7s520048.jpg',
+    vote_average: 8.2, release_date: '2024-02-27'
+  },
+  {
+    id: 155, title: 'The Dark Knight', media_type: 'movie', category: 'movie',
+    overview: 'Batman debe aceptar uno de los mayores desafÃ­os de su capacidad para luchar contra el Joker.',
+    poster_path: '/qJ2tW6WMUDux911r6m7haRef0WH.jpg', backdrop_path: '/dqK9Hag1054tghRQSqLSfrkvQnA.jpg',
+    vote_average: 8.5, release_date: '2008-07-16'
+  },
+  {
+    id: 872585, title: 'Oppenheimer', media_type: 'movie', category: 'movie',
+    overview: 'La historia del fÃ­sico J. Robert Oppenheimer y su liderazgo en el Proyecto Manhattan.',
+    poster_path: '/8Gxv8gSFCU0XGDykEGv7zR1n2ua.jpg', backdrop_path: '/fm6KqXpk3M2HVveHwCrBSSBaO0V.jpg',
+    vote_average: 8.1, release_date: '2023-07-19'
+  },
+  {
+    id: 66732, name: 'Stranger Things', title: 'Stranger Things', media_type: 'tv', category: 'tv',
+    overview: 'Tras la misteriosa desapariciÃ³n de un niÃ±o, un pueblo descubre un secreto con experimentos clasificados.',
+    poster_path: '/49WJfeN0moxb9IPfGn8AIqMGskD.jpg', backdrop_path: '/56v2KjBlU4XaOv9rVYEQypROD7P.jpg',
+    vote_average: 8.6, first_air_date: '2016-07-15', number_of_seasons: 4
+  },
+  {
+    id: 1399, name: 'Game of Thrones', title: 'Juego de Tronos', media_type: 'tv', category: 'tv',
+    overview: 'Siete familias nobles luchan por el control de la mÃ­tica tierra de Poniente.',
+    poster_path: '/u3bZgnGQ9T01sWNhyveQz0wH0Hl.jpg', backdrop_path: '/2OMB0ynKlyIenMJWI2Dy9IWT4c.jpg',
+    vote_average: 8.4, first_air_date: '2011-04-17', number_of_seasons: 8
+  },
+  {
+    id: 1396, name: 'Breaking Bad', title: 'Breaking Bad', media_type: 'tv', category: 'tv',
+    overview: 'Un profesor de quÃ­mica con cÃ¡ncer terminal recurre a la fabricaciÃ³n de metanfetamina.',
+    poster_path: '/ggFHVNu6YYI5L9pCfOacjizRGt.jpg', backdrop_path: '/tsRy63Mu5cu8etL1X7ZLyf7UP1M.jpg',
+    vote_average: 8.9, first_air_date: '2008-01-20', number_of_seasons: 5
+  },
+  {
+    id: 1429, name: 'Attack on Titan', title: 'Ataque a los Titanes', media_type: 'tv', category: 'anime',
+    overview: 'La humanidad vive dentro de ciudades rodeadas por enormes muros que los protegen de los Titanes.',
+    poster_path: '/aiy35EvapPV79Q87zyiyYKdwAI.jpg', backdrop_path: '/y74tlGv7z4EFTj8i2Zq60jIqjP.jpg',
+    vote_average: 8.9, first_air_date: '2013-04-07', number_of_seasons: 4
+  },
+  {
+    id: 85937, name: 'Demon Slayer', title: 'Demon Slayer', media_type: 'tv', category: 'anime',
+    overview: 'Tanjiro Kamado emprende un viaje para vengar a su familia asesinada.',
+    poster_path: '/xUfRZu2mi8jH6SzQEJGP6tjBuYj.jpg', backdrop_path: '/nTvM4mhqZlHIvUkI1gVnWumQU84.jpg',
+    vote_average: 8.7, first_air_date: '2019-04-06', number_of_seasons: 4
+  },
+  {
+    id: 12971, name: 'Dragon Ball Z', title: 'Dragon Ball Z', media_type: 'tv', category: 'anime',
+    overview: 'Goku y los Guerreros Z defienden la Tierra de poderosos villanos galÃ¡cticos.',
+    poster_path: '/dBsjo54k9zF4AocHwL7Hj03bJ3n.jpg', backdrop_path: '/f53JvlEgqvVoq7Tz6p6u8Y0NdrM.jpg',
+    vote_average: 8.3, first_air_date: '1989-04-26', number_of_seasons: 9
+  },
+  {
+    id: 60625, name: 'Rick and Morty', title: 'Rick y Morty', media_type: 'tv', category: 'cartoons',
+    overview: 'Un cientÃ­fico brillante pero alcohÃ³lico y su nieto viajan por dimensiones infinitas.',
+    poster_path: '/cvhNj9eoRBe5SxjardzrVZNTISn.jpg', backdrop_path: '/uK9uV0j2J8eK7s6W6t8M9Qe9z6M.jpg',
+    vote_average: 8.7, first_air_date: '2013-12-02', number_of_seasons: 7
+  },
+  {
+    id: 94605, name: 'Arcane', title: 'Arcane', media_type: 'tv', category: 'cartoons',
+    overview: 'Dos hermanas en bandos opuestos de una guerra tecnolÃ³gica entre PiltÃ³ver y Zaun.',
+    poster_path: '/fqldf2t8ztc9aiwn3k6mlX3tvRT.jpg', backdrop_path: '/v4y1m1scvK4x2K0tqL68Xm8Pj6J.jpg',
+    vote_average: 8.7, first_air_date: '2021-11-06', number_of_seasons: 2
+  },
+  {
+    id: 456, name: 'The Simpsons', title: 'Los Simpson', media_type: 'tv', category: 'cartoons',
+    overview: 'Las sÃ¡tiras y aventuras de la emblemÃ¡tica familia Simpson.',
+    poster_path: '/k55w9T3m72qV3xG3f2y6f4g.jpg', backdrop_path: '/hpU2cHC9tk90hG7neKaCVNm7DY.jpg',
+    vote_average: 8.0, first_air_date: '1989-12-17', number_of_seasons: 35
   }
-}
+];
 
-// ============================================================================
-// 7. RENDERIZADO VISUAL
-// ============================================================================
+/** Canales de TV en vivo. Sustituye `stream_url` por tu .m3u8. */
+const LIVE_CHANNELS = [
+  {
+    id: 'tv1', number: 1, name: 'Telefe', category: 'Nacional',
+    description: 'TransmisiÃ³n oficial de televisiÃ³n en directo, sin cortes.',
+    logo: '', stream_url: 'URL_M3U8_AQUI'
+  },
+  {
+    id: 'tv2', number: 2, name: 'TV PÃºblica', category: 'Nacional',
+    description: 'SeÃ±al en directo de la tv pÃºblica, 24 horas.',
+    logo: '', stream_url: 'URL_M3U8_AQUI'
+  },
+  {
+    id: 'tv3', number: 3, name: 'Canal 10 TucumÃ¡n', category: 'Regional',
+    description: 'TelevisiÃ³n regional en directo.',
+    logo: '', stream_url: 'URL_M3U8_AQUI'
+  }
+];
 
+/* ==========================================================================
+ * 7. RENDER â€” HERO
+ * ========================================================================== */
+
+/**
+ * Pinta el banner principal.
+ * @param {object} item TÃ­tulo normalizado, o null para el canal destacado.
+ */
 function renderHero(item) {
   if (!item) return;
+
   state.featuredHeroItem = item;
 
-  const isMovie = item.media_type === 'movie' || (!item.media_type && item.title);
-  const mediaType = isMovie ? 'movie' : 'tv';
-  const title = item.title || item.name || 'Título Destacado';
-  const year = formatYear(item.release_date || item.first_air_date);
-  const rating = item.vote_average ? item.vote_average.toFixed(1) : '7.8';
-  const overview = item.overview || 'Disfruta de esta aclamada producción en alta definición en PelisFlix.';
+  const isLive = Boolean(item.isLiveChannel);
+  const typeLabel = isLive ? (item.category || 'En vivo') : item.typeLabel;
 
-  const backdropUrl = item.backdrop_path 
-    ? `${CONFIG.BACKDROP_BASE_URL}${item.backdrop_path}` 
-    : (item.poster_path ? `${CONFIG.IMAGE_BASE_URL}${item.poster_path}` : '');
-
-  if (backdropUrl) {
+  // Fondo
+  if (isLive) {
+    dom.heroBackdrop.style.backgroundImage =
+      'radial-gradient(circle at 50% 40%, #2a1518 0%, #141414 70%)';
+  } else {
+    const backdropUrl = item.backdrop
+      ? (item.backdrop.startsWith('/')
+          ? CONFIG.BACKDROP_BASE_URL + item.backdrop
+          : CONFIG.IMAGE_BASE_URL + item.backdrop)
+      : CONFIG.FALLBACK_POSTER;
     dom.heroBackdrop.style.backgroundImage = `url("${backdropUrl}")`;
   }
 
-  dom.heroBadge.innerHTML = `<i class="fa-solid fa-fire"></i> Destacado en ${isMovie ? 'Películas' : 'Series'}`;
-  dom.heroTitle.textContent = title;
-  dom.heroMeta.innerHTML = `
-    <span class="hero-rating"><i class="fa-solid fa-star"></i> ${rating}</span>
-    <span class="hero-year">${year}</span>
-    <span class="hero-type-badge">${isMovie ? 'Película' : 'Serie'}</span>
-  `;
-  dom.heroOverview.textContent = overview;
-}
+  // TÃ­tulo: texto plano, sin etiquetas ni cajas.
+  dom.heroTitle.textContent = isLive ? `${item.title} en vivo` : item.title;
 
-function createMediaCard(item) {
-  const isMovie = item.media_type === 'movie' || (!item.media_type && item.title && !item.name);
-  const mediaType = isMovie ? 'movie' : 'tv';
-  const title = item.title || item.name || 'Sin Título';
-  const year = formatYear(item.release_date || item.first_air_date);
-  const rating = item.vote_average ? item.vote_average.toFixed(1) : 'S/R';
-  const posterSrc = item.poster_path ? `${CONFIG.IMAGE_BASE_URL}${item.poster_path}` : CONFIG.FALLBACK_POSTER;
+  // Metadatos: solo texto. Sin badges de fondo (requisito de diseÃ±o).
+  dom.heroMeta.replaceChildren();
 
-  const card = document.createElement('article');
-  card.className = 'media-card';
-  card.setAttribute('tabindex', '0'); // Habilitado para D-Pad y teclado
-  card.setAttribute('role', 'button');
-  card.setAttribute('aria-label', `${title}, ${year}, calificación ${rating}`);
-
-  card.innerHTML = `
-    <div class="card-poster-wrapper">
-      <img src="${posterSrc}" alt="Poster de ${title}" class="card-poster" loading="lazy" />
-      <span class="card-badge-rating"><i class="fa-solid fa-star"></i> ${rating}</span>
-      <span class="card-badge-type">${isMovie ? 'Película' : 'Serie'}</span>
-      <div class="card-hover-overlay">
-        <div class="card-play-icon">
-          <i class="fa-solid fa-play"></i>
-        </div>
-      </div>
-    </div>
-    <div class="card-info">
-      <h3 class="card-title" title="${title}">${title}</h3>
-      <div class="card-meta">
-        <span>${year}</span>
-        <span>${isMovie ? 'Film' : 'TV'}</span>
-      </div>
-    </div>
-  `;
-
-  // Clic o Touch
-  card.addEventListener('click', () => {
-    state.lastFocusedElementBeforeModal = card;
-    openMediaModal(item.id, mediaType);
-  });
-
-  // Tecla Enter
-  card.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      state.lastFocusedElementBeforeModal = card;
-      openMediaModal(item.id, mediaType);
-    }
-  });
-
-  // Auto-scroll al recibir foco mediante D-Pad
-  card.addEventListener('focus', () => {
-    card.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
-  });
-
-  return card;
-}
-
-function createSearchMediaCard(item) {
-  const isMovie = item.media_type === 'movie' || (!item.media_type && item.title && !item.name);
-  const mediaType = isMovie ? 'movie' : 'tv';
-  const title = item.title || item.name || 'Sin Título';
-  const year = formatYear(item.release_date || item.first_air_date);
-  const rating = item.vote_average ? item.vote_average.toFixed(1) : 'S/R';
-  const posterSrc = item.poster_path ? `${CONFIG.IMAGE_BASE_URL}${item.poster_path}` : CONFIG.FALLBACK_POSTER;
-
-  const card = document.createElement('article');
-  card.className = 'media-card';
-  card.setAttribute('tabindex', '0');
-  card.setAttribute('role', 'button');
-  card.setAttribute('aria-label', `${title}, ${year}, calificación ${rating}`);
-
-  card.innerHTML = `
-    <div class="card-poster-wrapper">
-      <img src="${posterSrc}" alt="Poster de ${title}" class="card-poster" loading="lazy" />
-      <span class="card-badge-rating"><i class="fa-solid fa-star"></i> ${rating}</span>
-      <span class="card-badge-type">${isMovie ? 'Película' : 'Serie'}</span>
-      <div class="card-hover-overlay">
-        <div class="card-play-icon">
-          <i class="fa-solid fa-play"></i>
-        </div>
-      </div>
-    </div>
-    <div class="card-info">
-      <h3 class="card-title" title="${title}">${title}</h3>
-      <div class="card-meta">
-        <span>${year}</span>
-        <span>${isMovie ? 'Film' : 'TV'}</span>
-      </div>
-    </div>
-  `;
-
-  const onSelect = () => {
-    closeSearchModal();
-    state.lastFocusedElementBeforeModal = dom.headerSearchBtn;
-    openMediaModal(item.id, mediaType);
-  };
-
-  card.addEventListener('click', onSelect);
-  card.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      onSelect();
-    }
-  });
-
-  card.addEventListener('focus', () => {
-    card.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
-  });
-
-  return card;
-}
-
-/* Renderizado de Tarjeta para Canal de TV en Vivo (IPTV) */
-function createLiveChannelCard(channel, index = 0) {
-  const card = document.createElement('article');
-  card.className = 'live-channel-card';
-  card.setAttribute('tabindex', '0');
-  card.setAttribute('role', 'button');
-  const chNum = channel.number || (index + 1);
-  const chCategory = channel.category || 'Nacional';
-  const chDesc = channel.description || channel.desc || 'Transmisión oficial de televisión en directo sin cortes.';
-  card.setAttribute('aria-label', `${channel.name}, Canal ${chNum}, ${chCategory}`);
-
-  const fallbackLogoSvg = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100" viewBox="0 0 200 100"><rect fill="%23222" width="200" height="100" rx="8"/><text fill="%23E50914" font-family="sans-serif" font-size="16" font-weight="bold" x="50%" y="50%" text-anchor="middle" dy="5.5">${channel.name}</text></svg>`;
-
-  card.innerHTML = `
-    <div class="channel-card-top">
-      <span class="channel-number">CH ${chNum}</span>
-      <span class="channel-live-badge"><i class="fa-solid fa-circle"></i> EN VIVO</span>
-    </div>
-    <div class="channel-logo-container">
-      <img 
-        src="${channel.logo}" 
-        alt="Logo de ${channel.name}" 
-        class="channel-logo" 
-        loading="lazy"
-        onerror="this.onerror=null; this.src='${fallbackLogoSvg}';"
-      />
-    </div>
-    <div class="channel-card-body">
-      <div class="channel-header-row">
-        <h3 class="channel-name" title="${channel.name}">${channel.name}</h3>
-        <span class="channel-category-tag">${chCategory}</span>
-      </div>
-      <p class="channel-desc">${chDesc}</p>
-      <div class="channel-play-action">
-        <i class="fa-solid fa-play"></i> Sintonizar
-      </div>
-    </div>
-  `;
-
-  // Clic o Toque
-  card.addEventListener('click', () => {
-    state.lastFocusedElementBeforeModal = card;
-    openLiveChannel(channel);
-  });
-
-  // Tecla Enter para Control Remoto de Smart TV
-  card.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      state.lastFocusedElementBeforeModal = card;
-      openLiveChannel(channel);
-    }
-  });
-
-  // Auto-scroll al recibir foco
-  card.addEventListener('focus', () => {
-    card.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
-  });
-
-  return card;
-}
-
-/* Renderizado de Grilla de Canales en Vivo */
-function renderLiveChannels(channels) {
-  dom.mediaGrid.classList.add('live-grid');
-  dom.mediaGrid.innerHTML = '';
-
-  if (channels.length > 0) {
-    const featured = channels[0];
-    const chNum = featured.number || 1;
-    const chCategory = featured.category || 'Nacional';
-    const chDesc = featured.description || featured.desc || 'Transmisión en directo sin cortes.';
-    dom.heroBackdrop.style.backgroundImage = `radial-gradient(circle, rgba(40,10,15,0.8) 0%, rgba(18,18,18,0.98) 100%)`;
-    dom.heroBadge.innerHTML = `<i class="fa-solid fa-satellite-dish"></i> Transmisión en Directo (IPTV)`;
-    dom.heroTitle.textContent = `${featured.name} En Vivo`;
-    dom.heroMeta.innerHTML = `
-      <span class="hero-rating"><i class="fa-solid fa-signal"></i> Señal HD</span>
-      <span class="hero-year">Canal ${chNum}</span>
-      <span class="hero-type-badge">${chCategory}</span>
-    `;
-    dom.heroOverview.textContent = chDesc;
-    state.featuredHeroItem = {
-      ...featured,
-      isLiveChannel: true
-    };
-  }
-
-  const fragment = document.createDocumentFragment();
-  channels.forEach((ch, idx) => {
-    fragment.appendChild(createLiveChannelCard(ch, idx));
-  });
-  dom.mediaGrid.appendChild(fragment);
-
-  if (dom.loadMoreBtn) {
-    dom.loadMoreBtn.classList.add('hidden');
-  }
-}
-
-function renderMediaGrid(items, append = false) {
-  dom.mediaGrid.classList.remove('live-grid');
-  if (!append) {
-    dom.mediaGrid.innerHTML = '';
-  }
-
-  if (!items || items.length === 0) {
-    if (!append) {
-      dom.mediaGrid.innerHTML = `
-        <div style="grid-column: 1 / -1; text-align: center; padding: 60px 20px; color: var(--text-muted);">
-          <i class="fa-solid fa-film" style="font-size: 3.5rem; margin-bottom: 16px; opacity: 0.4;"></i>
-          <h3>No se encontraron resultados</h3>
-          <p>Presiona el botón de Menú para buscar otros títulos o cambiar de categoría.</p>
-        </div>
-      `;
-    }
-    dom.loadMoreBtn.classList.add('hidden');
-    return;
-  }
-
-  const validItems = items.filter(item => item.media_type !== 'person' && (item.title || item.name));
-  const fragment = document.createDocumentFragment();
-  validItems.forEach(item => fragment.appendChild(createMediaCard(item)));
-  dom.mediaGrid.appendChild(fragment);
-
-  if (state.currentPage < state.totalPages && state.currentTab !== 'search') {
-    dom.loadMoreBtn.classList.remove('hidden');
+  if (isLive) {
+    const signal = makeEl('span', 'hero-rating');
+    appendIconText(signal, 'fa-solid fa-signal', 'SeÃ±al HD');
+    dom.heroMeta.append(signal);
+    dom.heroMeta.append(makeMeta('hero-year', `Canal ${item.number ?? ''}`.trim()));
   } else {
-    dom.loadMoreBtn.classList.add('hidden');
+    const rating = makeEl('span', 'hero-rating');
+    appendIconText(rating, 'fa-solid fa-star', item.rating || 'â€”');
+    dom.heroMeta.append(rating);
+    dom.heroMeta.append(makeMeta('hero-year', item.year));
+  }
+  dom.heroMeta.append(makeMeta('hero-type-badge', typeLabel));
+
+  dom.heroOverview.textContent =
+    item.overview || 'Disfruta de esta producciÃ³n en alta definiciÃ³n.';
+
+  /**
+   * Metadato del hero. Solo texto: sin fondo ni borde.
+   * @param {string} className
+   * @param {string} text
+   */
+  function makeMeta(className, text) {
+    return makeEl('span', className, text);
   }
 }
 
-function showSkeletons(count = 10) {
-  dom.mediaGrid.innerHTML = '';
-  for (let i = 0; i < count; i++) {
-    const sk = document.createElement('div');
-    sk.className = 'card-skeleton';
-    dom.mediaGrid.appendChild(sk);
-  }
-}
-
-// ============================================================================
-// 7.B LAYOUT NETFLIX: CARRUSELES HORIZONTALES Y EXPLORADOR DE CATEGORÍAS
-// ============================================================================
+/* ==========================================================================
+ * 8. RENDER â€” TARJETAS
+ * ========================================================================== */
 
 /**
- * Crea una tarjeta compacta para las filas horizontales (Row Card)
+ * Contenedor de pÃ³ster con overlay de reproducciÃ³n.
+ * @param {{poster: string, title: string, rating: string, typeLabel: string}} item
+ * @returns {HTMLElement}
  */
-function createRowCard(item) {
-  const isMovie = item.media_type === 'movie' || (!item.media_type && item.title && !item.name);
-  const mediaType = isMovie ? 'movie' : 'tv';
-  const title = item.title || item.name || 'Sin Título';
-  const year = formatYear(item.release_date || item.first_air_date);
-  const rating = item.vote_average ? item.vote_average.toFixed(1) : 'S/R';
-  const posterSrc = item.poster_path ? `${CONFIG.IMAGE_BASE_URL}${item.poster_path}` : CONFIG.FALLBACK_POSTER;
+function buildPosterBlock(item) {
+  const wrap = makeEl('div', 'card-poster-wrapper');
+
+  const img = document.createElement('img');
+  img.className = 'card-poster';
+  img.src = item.poster;
+  img.alt = `Poster de ${item.title}`;
+  img.loading = 'lazy';
+  img.decoding = 'async';
+  // Si TMDb devuelve un pÃ³ster roto, caemos al placeholder local.
+  img.addEventListener('error', () => { img.src = CONFIG.FALLBACK_POSTER; }, { once: true });
+  wrap.appendChild(img);
+
+  const rating = makeEl('span', 'card-badge-rating');
+  appendIconText(rating, 'fa-solid fa-star', item.rating);
+  wrap.appendChild(rating);
+
+  wrap.appendChild(makeEl('span', 'card-badge-type', item.typeLabel));
+
+  const overlay = makeEl('div', 'card-hover-overlay');
+  overlay.appendChild(makeIcon('fa-solid fa-play'));
+  wrap.appendChild(overlay);
+
+  return wrap;
+}
+
+/**
+ * Bloque de metadatos bajo el pÃ³ster.
+ * @param {{title: string, year: string, typeLabel: string}} item
+ * @returns {HTMLElement}
+ */
+function buildInfoBlock(item) {
+  const info = makeEl('div', 'card-info');
+
+  const title = makeEl('h3', 'card-title', item.title);
+  title.title = item.title;
+  info.appendChild(title);
+
+  const meta = makeEl('div', 'card-meta');
+  meta.appendChild(makeEl('span', null, item.year));
+  meta.appendChild(makeEl('span', null, item.mediaType === 'movie' ? 'Film' : 'TV'));
+  info.appendChild(meta);
+
+  return info;
+}
+
+/**
+ * Tarjeta de la grilla de catÃ¡logo.
+ * @param {object} item
+ * @param {{onSelect?: Function}} [opts]
+ * @returns {HTMLElement}
+ */
+function createMediaCard(item, opts = {}) {
+  const data = normalizeItem(item);
+  if (!data) return document.createComment('invalid-item');
 
   const card = document.createElement('article');
-  card.className = 'row-card';
-  card.setAttribute('tabindex', '0');
+  card.className = 'media-card';
+  card.tabIndex = 0;
   card.setAttribute('role', 'button');
-  card.setAttribute('aria-label', `${title}, ${year}, calificación ${rating}`);
+  card.setAttribute('aria-label', `${data.title}, ${data.year}, calificaciÃ³n ${data.rating}`);
 
-  card.innerHTML = `
-    <div class="row-card-poster-wrap">
-      <img src="${posterSrc}" alt="Poster de ${title}" class="row-card-poster" loading="lazy" />
-      <span class="row-card-rating"><i class="fa-solid fa-star"></i> ${rating}</span>
-      <div class="row-card-overlay">
-        <div class="row-card-play">
-          <i class="fa-solid fa-play"></i>
-        </div>
-      </div>
-    </div>
-    <div class="row-card-info">
-      <h3 class="row-card-title" title="${title}">${title}</h3>
-      <div class="row-card-meta">
-        <span>${year}</span>
-        <span>${isMovie ? 'Film' : 'TV'}</span>
-      </div>
-    </div>
-  `;
+  card.appendChild(buildPosterBlock(data));
+  card.appendChild(buildInfoBlock(data));
 
-  // Clic o Touch para abrir modal
-  card.addEventListener('click', () => {
-    state.lastFocusedElementBeforeModal = card;
-    openMediaModal(item.id, mediaType);
-  });
+  const select = () => {
+    if (opts.onSelect) opts.onSelect(data);
+    else {
+      state.lastFocusedElement = card;
+      openMediaModal(data.id, data.mediaType);
+    }
+  };
 
-  // Enter para Smart TV
+  card.addEventListener('click', select);
   card.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      state.lastFocusedElementBeforeModal = card;
-      openMediaModal(item.id, mediaType);
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      select();
     }
   });
-
-  // Auto-scroll al recibir foco (D-Pad)
   card.addEventListener('focus', () => {
     card.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
   });
@@ -941,92 +783,450 @@ function createRowCard(item) {
 }
 
 /**
- * Muestra skeletons de carga en una fila
+ * Tarjeta compacta para los carruseles horizontales.
+ * @param {object} item
+ * @returns {HTMLElement}
  */
-function showRowSkeletons(scrollContainer, count = 10) {
-  if (!scrollContainer) return;
-  scrollContainer.innerHTML = '';
-  for (let i = 0; i < count; i++) {
-    const sk = document.createElement('div');
-    sk.className = 'row-card-skeleton';
-    scrollContainer.appendChild(sk);
+function createRowCard(item) {
+  const data = normalizeItem(item);
+  if (!data) return document.createComment('invalid-item');
+
+  const card = document.createElement('article');
+  card.className = 'row-card';
+  card.tabIndex = 0;
+  card.setAttribute('role', 'button');
+  card.setAttribute('aria-label', `${data.title}, ${data.year}, calificaciÃ³n ${data.rating}`);
+
+  // PÃ³ster
+  const posterWrap = makeEl('div', 'row-card-poster-wrap');
+  const img = document.createElement('img');
+  img.className = 'row-card-poster';
+  img.src = data.poster;
+  img.alt = `Poster de ${data.title}`;
+  img.loading = 'lazy';
+  img.decoding = 'async';
+  img.addEventListener('error', () => { img.src = CONFIG.FALLBACK_POSTER; }, { once: true });
+  posterWrap.appendChild(img);
+
+  const rating = makeEl('span', 'row-card-rating');
+  appendIconText(rating, 'fa-solid fa-star', data.rating);
+  posterWrap.appendChild(rating);
+
+  const overlay = makeEl('div', 'row-card-overlay');
+  overlay.appendChild(makeIcon('fa-solid fa-play'));
+  posterWrap.appendChild(overlay);
+  card.appendChild(posterWrap);
+
+  // Metadatos
+  const info = makeEl('div', 'row-card-info');
+  const title = makeEl('h3', 'row-card-title', data.title);
+  title.title = data.title;
+  info.appendChild(title);
+  const meta = makeEl('div', 'row-card-meta');
+  meta.appendChild(makeEl('span', null, data.year));
+  meta.appendChild(makeEl('span', null, data.mediaType === 'movie' ? 'Film' : 'TV'));
+  info.appendChild(meta);
+  card.appendChild(info);
+
+  const select = () => {
+    state.lastFocusedElement = card;
+    openMediaModal(data.id, data.mediaType);
+  };
+
+  card.addEventListener('click', select);
+  card.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      select();
+    }
+  });
+  card.addEventListener('focus', () => {
+    card.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+  });
+
+  return card;
+}
+
+/**
+ * Tarjeta de canal de TV en vivo.
+ * @param {object} channel
+ * @param {number} index
+ * @returns {HTMLElement}
+ */
+function createLiveChannelCard(channel, index) {
+  const card = document.createElement('article');
+  card.className = 'live-channel-card';
+  card.tabIndex = 0;
+  card.setAttribute('role', 'button');
+  card.setAttribute(
+    'aria-label',
+    `${channel.name}, canal ${channel.number ?? index + 1}, ${channel.category || 'en vivo'}`
+  );
+
+  // Cabecera
+  const top = makeEl('div', 'channel-card-top');
+  top.appendChild(makeEl('span', 'channel-number', `CH ${channel.number ?? index + 1}`));
+  const live = makeEl('span', 'channel-live-badge');
+  live.appendChild(makeIcon('fa-solid fa-circle'));
+  live.appendChild(document.createTextNode(' EN VIVO'));
+  top.appendChild(live);
+  card.appendChild(top);
+
+  // Logo
+  const logoBox = makeEl('div', 'channel-logo-container');
+  const logo = document.createElement('img');
+  logo.className = 'channel-logo';
+  logo.alt = `Logo de ${channel.name}`;
+  logo.loading = 'lazy';
+  if (channel.logo) {
+    logo.src = channel.logo;
+    logo.addEventListener('error', () => {
+      logo.src = CONFIG.fallbackLogo(channel.name, 200, 100);
+    }, { once: true });
+  } else {
+    logo.src = CONFIG.fallbackLogo(channel.name, 200, 100);
+  }
+  logoBox.appendChild(logo);
+  card.appendChild(logoBox);
+
+  // Cuerpo
+  const body = makeEl('div', 'channel-card-body');
+  const header = makeEl('div', 'channel-header-row');
+  const name = makeEl('h3', 'channel-name', channel.name);
+  name.title = channel.name;
+  header.appendChild(name);
+  header.appendChild(makeEl('span', 'channel-category-tag', channel.category || 'Nacional'));
+  body.appendChild(header);
+
+  body.appendChild(makeEl(
+    'p', 'channel-desc',
+    channel.description || 'TransmisiÃ³n oficial de televisiÃ³n en directo, sin cortes.'
+  ));
+
+  const action = makeEl('div', 'channel-play-action');
+  appendIconText(action, 'fa-solid fa-play', 'Sintonizar');
+  body.appendChild(action);
+  card.appendChild(body);
+
+  const select = () => {
+    state.lastFocusedElement = card;
+    openLiveChannel(channel);
+  };
+
+  card.addEventListener('click', select);
+  card.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      select();
+    }
+  });
+  card.addEventListener('focus', () => {
+    card.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+  });
+
+  return card;
+}
+
+/* ==========================================================================
+ * 9. RENDER â€” GRILLAS, FILAS Y SKELETONS
+ * ========================================================================== */
+
+/**
+ * Muestra un estado vacÃ­o en la grilla.
+ * @param {HTMLElement} grid
+ * @param {{icon: string, title: string, text: string}} content
+ */
+function renderEmptyState(grid, { icon, title, text }) {
+  const box = makeEl('div', 'search-empty-state');
+  box.appendChild(makeIcon(icon));
+  box.appendChild(makeEl('h3', null, title));
+  box.appendChild(makeEl('p', null, text));
+  grid.replaceChildren(box);
+}
+
+/**
+ * Pinta la grilla del catÃ¡logo.
+ * @param {object[]} items
+ * @param {boolean} [append]
+ */
+function renderMediaGrid(items, append = false) {
+  dom.mediaGrid.classList.remove('live-grid');
+  if (!append) dom.mediaGrid.replaceChildren();
+
+  const cards = items
+    .map((item) => createMediaCard(item))
+    .filter((node) => node.nodeType === Node.ELEMENT_NODE);
+
+  if (cards.length === 0) {
+    if (!append) {
+      renderEmptyState(dom.mediaGrid, {
+        icon: 'fa-solid fa-film',
+        title: 'No se encontraron resultados',
+        text: 'Prueba con otro tÃ­tulo o cambia de categorÃ­a desde el menÃº superior.'
+      });
+    }
+    toggleHidden(dom.loadMoreBtn, true);
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+  cards.forEach((card) => fragment.appendChild(card));
+  dom.mediaGrid.appendChild(fragment);
+
+  toggleHidden(dom.loadMoreBtn, state.currentPage >= state.totalPages);
+}
+
+/**
+ * Pinta los canales de TV en vivo.
+ * @param {object[]} channels
+ */
+function renderLiveChannels(channels) {
+  dom.mediaGrid.classList.add('live-grid');
+  dom.mediaGrid.replaceChildren();
+
+  if (channels.length === 0) {
+    renderEmptyState(dom.mediaGrid, {
+      icon: 'fa-solid fa-tv',
+      title: 'Sin canales configurados',
+      text: 'AÃ±ade canales en el array LIVE_CHANNELS de app.js para verlos aquÃ­.'
+    });
+    toggleHidden(dom.loadMoreBtn, true);
+    return;
+  }
+
+  const featured = channels[0];
+  renderHero({
+    isLiveChannel: true,
+    id: featured.id,
+    title: featured.name,
+    number: featured.number,
+    category: featured.category,
+    overview: featured.description,
+    ...featured
+  });
+
+  const fragment = document.createDocumentFragment();
+  channels.forEach((channel, i) => fragment.appendChild(createLiveChannelCard(channel, i)));
+  dom.mediaGrid.appendChild(fragment);
+
+  toggleHidden(dom.loadMoreBtn, true);
+}
+
+/**
+ * Skeletons de carga para la grilla.
+ * @param {number} [count]
+ */
+function showGridSkeletons(count = 12) {
+  dom.mediaGrid.replaceChildren();
+  const fragment = document.createDocumentFragment();
+  for (let i = 0; i < count; i++) fragment.appendChild(makeEl('div', 'card-skeleton'));
+  dom.mediaGrid.appendChild(fragment);
+}
+
+/**
+ * Skeletons de carga para un carrusel.
+ * @param {string} scrollId
+ * @param {number} [count]
+ */
+function showRowSkeletons(scrollId, count = 10) {
+  const container = document.getElementById(scrollId);
+  if (!container) return;
+  container.replaceChildren();
+  const fragment = document.createDocumentFragment();
+  for (let i = 0; i < count; i++) fragment.appendChild(makeEl('div', 'row-card-skeleton'));
+  container.appendChild(fragment);
+}
+
+/* ==========================================================================
+ * 10. NAVEGACIÃ“N POR PESTAÃ‘AS
+ * ========================================================================== */
+
+/** Muestra el layout de filas y oculta la grilla. */
+function showRowsLayout() {
+  toggleHidden(dom.homeRowsContainer, false);
+  toggleHidden(dom.catalogSection, true);
+  toggleHidden(dom.categoryExplorer, true);
+  toggleHidden(dom.heroBanner, false);
+}
+
+/** Muestra la grilla de catÃ¡logo y oculta las filas. */
+function showCatalogLayout() {
+  toggleHidden(dom.homeRowsContainer, true);
+  toggleHidden(dom.catalogSection, false);
+  toggleHidden(dom.categoryExplorer, true);
+  toggleHidden(dom.heroBanner, false);
+}
+
+const TAB_META = {
+  tv: {
+    title: 'Series de TelevisiÃ³n',
+    subtitle: 'Las mejores series para maratonear',
+    fetch: getSeries
+  },
+  anime: {
+    title: 'Anime JaponÃ©s',
+    subtitle: 'ShÅnen, seinen y mÃ¡s animaciÃ³n japonesa',
+    fetch: getAnime
+  },
+  cartoons: {
+    title: 'Dibujos Animados',
+    subtitle: 'AnimaciÃ³n occidental para toda la familia',
+    fetch: getCartoons
+  }
+};
+
+/**
+ * Carga la pestaÃ±a indicada.
+ * @param {string} tab
+ * @param {number} [page]
+ */
+async function loadActiveTab(tab = state.currentTab, page = 1) {
+  const token = ++state.tokens.tab;
+
+  state.currentTab = tab;
+  state.currentPage = page;
+
+  dom.navTabButtons.forEach((btn) => {
+    btn.classList.toggle('active', btn.dataset.category === tab);
+  });
+
+  /* --- TV en vivo: datos locales, sin red --- */
+  if (tab === 'live') {
+    showCatalogLayout();
+    dom.sectionTitle.textContent = 'TV en Vivo';
+    dom.sectionSubtitle.textContent = 'Transmisiones oficiales y seÃ±ales 24/7 sin cortes';
+    dom.resultsCount.textContent = `${LIVE_CHANNELS.length} canales`;
+    renderLiveChannels(LIVE_CHANNELS);
+    return;
+  }
+
+  /* --- PelÃ­culas: hero + carruseles --- */
+  if (tab === 'movie') {
+    showRowsLayout();
+    await loadHero();
+    // El usuario pudo cambiar de pestaÃ±a mientras cargaba el hero.
+    if (token !== state.tokens.tab) return;
+    loadHomeRows();
+    return;
+  }
+
+  /* --- Series / Anime / Dibujos: grilla paginada --- */
+  const meta = TAB_META[tab] || TAB_META.tv;
+  showCatalogLayout();
+  dom.sectionTitle.textContent = meta.title;
+  dom.sectionSubtitle.textContent = meta.subtitle;
+  dom.resultsCount.textContent = '';
+
+  if (page === 1) showGridSkeletons();
+  else toggleHidden(dom.loader, false);
+
+  try {
+    const data = await meta.fetch(page);
+    if (token !== state.tokens.tab) return; // otra navegaciÃ³n ganÃ³ la carrera
+
+    state.totalPages = Math.min(data.total_pages || 1, 500);
+    const items = data.results || [];
+
+    if (page === 1 && items.length) renderHero(normalizeItem(items[0]));
+    renderMediaGrid(items, page > 1);
+    toggleHidden(dom.loadMoreBtn, state.currentPage >= state.totalPages);
+  } catch (error) {
+    if (token !== state.tokens.tab) return;
+    console.warn(`[Peloflix] Modo demostraciÃ³n (${error.message})`);
+
+    const demo = DEMO_ITEMS.filter((item) => item.category === tab);
+    if (page === 1 && demo.length) renderHero(normalizeItem(demo[0]));
+    renderMediaGrid(demo, false);
+    toggleHidden(dom.loadMoreBtn, true);
+  } finally {
+    if (token === state.tokens.tab) toggleHidden(dom.loader, true);
+  }
+}
+
+/** Carga el tÃ­tulo destacado del hero para la pestaÃ±a PelÃ­culas. */
+async function loadHero() {
+  try {
+    if (!CONFIG.getApiKey()) throw new Error('NO_API_KEY');
+    const data = await fetchFromTMDb('/trending/movie/week', { page: 1 });
+    const first = (data.results || []).find((i) => i.title);
+    if (first) renderHero(normalizeItem(first));
+  } catch {
+    const demo = DEMO_ITEMS.find((item) => item.category === 'movie');
+    if (demo) renderHero(normalizeItem(demo));
   }
 }
 
 /**
- * Carga las 4 filas horizontales del layout Netflix en paralelo
+ * Carga los 4 carruseles en paralelo. Cada fila es independiente: un fallo
+ * en una no arrastra a las demÃ¡s.
  */
-async function loadHomeRows() {
-  // Mostrar skeletons en todas las filas
-  HOME_ROWS.forEach(row => {
-    const scrollEl = document.getElementById(row.scrollId);
-    showRowSkeletons(scrollEl, 10);
-  });
+function loadHomeRows() {
+  const token = ++state.tokens.rows;
 
-  // Cargar datos de todas las filas en paralelo
-  const rowPromises = HOME_ROWS.map(async (row) => {
-    const scrollEl = document.getElementById(row.scrollId);
-    if (!scrollEl) return;
+  // El aÃ±o del rÃ³tulo sigue al calendario real.
+  if (dom.rowYearLabel) dom.rowYearLabel.textContent = new Date().getFullYear();
+
+  HOME_ROWS.forEach((row) => showRowSkeletons(row.scrollId));
+
+  const requests = HOME_ROWS.map(async (row) => {
+    const container = document.getElementById(row.scrollId);
+    if (!container) return;
 
     try {
       if (!CONFIG.getApiKey()) throw new Error('NO_API_KEY');
+      const data = await fetchFromTMDb(row.endpoint, { ...row.params(), page: 1 });
+      if (token !== state.tokens.rows) return;
 
-      const data = await fetchFromTMDb(row.endpoint, { ...row.params, page: 1 });
-      const items = (data.results || []).filter(i => i.title || i.name).map(i => ({
-        ...i,
-        media_type: i.media_type || 'movie'
-      }));
+      const cards = (data.results || [])
+        .map(createRowCard)
+        .filter((node) => node.nodeType === Node.ELEMENT_NODE);
 
-      scrollEl.innerHTML = '';
+      container.replaceChildren();
       const fragment = document.createDocumentFragment();
-      items.forEach(item => fragment.appendChild(createRowCard(item)));
-      scrollEl.appendChild(fragment);
-
-    } catch (error) {
-      console.warn(`[PelisFlix] Fila "${row.title}" en modo demo:`, error.message);
-      // Fallback: usar items de demo
-      scrollEl.innerHTML = '';
-      const demoMovies = DEMO_ITEMS.filter(i => i.category === 'movie' || i.media_type === 'movie');
+      cards.forEach((card) => fragment.appendChild(card));
+      container.appendChild(fragment);
+    } catch {
+      if (token !== state.tokens.rows) return;
+      // Fallback: la lista de demostraciÃ³n da contenido aunque no haya red.
+      const demo = DEMO_ITEMS.filter((item) => item.category === 'movie');
+      container.replaceChildren();
       const fragment = document.createDocumentFragment();
-      demoMovies.forEach(item => fragment.appendChild(createRowCard(item)));
-      scrollEl.appendChild(fragment);
+      demo.forEach((item) => fragment.appendChild(createRowCard(item)));
+      container.appendChild(fragment);
     }
   });
 
-  await Promise.allSettled(rowPromises);
+  Promise.allSettled(requests);
 }
 
-/**
- * Renderiza los botones de género en el explorador de categorías
- */
+/* ==========================================================================
+ * 11. EXPLORADOR DE GÃ‰NEROS
+ * ========================================================================== */
+
+/** Renderiza (una sola vez) los botones de gÃ©nero. */
 function renderGenreButtons() {
-  if (!dom.genreBtnGrid) return;
-  dom.genreBtnGrid.innerHTML = '';
+  if (!dom.genreBtnGrid || dom.genreBtnGrid.children.length) return;
 
   const fragment = document.createDocumentFragment();
-  TMDB_GENRES.forEach(genre => {
-    const btn = document.createElement('button');
-    btn.className = 'genre-filter-btn';
-    btn.setAttribute('tabindex', '0');
-    btn.setAttribute('role', 'listitem');
-    btn.setAttribute('data-genre-id', genre.id);
-    btn.innerHTML = `<i class="${genre.icon}"></i> ${genre.name}`;
 
-    btn.addEventListener('click', () => {
-      // Marcar como activo
-      dom.genreBtnGrid.querySelectorAll('.genre-filter-btn').forEach(b => b.classList.remove('active'));
+  TMDB_GENRES.forEach((genre) => {
+    const btn = makeEl('button', 'genre-filter-btn');
+    btn.type = 'button';
+    btn.tabIndex = 0;
+    btn.dataset.genreId = genre.id;
+    appendIconText(btn, genre.icon, genre.name);
+
+    const select = () => {
+      dom.genreBtnGrid.querySelectorAll('.genre-filter-btn')
+        .forEach((b) => b.classList.remove('active'));
       btn.classList.add('active');
       loadGenreResults(genre.id, genre.name, 1);
-    });
+    };
 
+    btn.addEventListener('click', select);
     btn.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        dom.genreBtnGrid.querySelectorAll('.genre-filter-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        loadGenreResults(genre.id, genre.name, 1);
-      }
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); select(); }
     });
-
     btn.addEventListener('focus', () => {
       btn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
     });
@@ -1037,65 +1237,59 @@ function renderGenreButtons() {
   dom.genreBtnGrid.appendChild(fragment);
 }
 
-/**
- * Muestra el explorador de categorías y oculta las filas Netflix
- */
 function showCategoryExplorer() {
-  if (dom.homeRowsContainer) dom.homeRowsContainer.classList.add('hidden');
-  if (dom.heroBanner) dom.heroBanner.classList.add('hidden');
-  if (dom.catalogSection) dom.catalogSection.classList.add('hidden');
-  if (dom.categoryExplorer) dom.categoryExplorer.classList.remove('hidden');
+  toggleHidden(dom.homeRowsContainer, true);
+  toggleHidden(dom.catalogSection, true);
+  toggleHidden(dom.heroBanner, true);
+  toggleHidden(dom.categoryExplorer, false);
 
-  // Renderizar botones de género si aún no están
-  if (dom.genreBtnGrid && dom.genreBtnGrid.children.length === 0) {
-    renderGenreButtons();
-  }
-
-  // Scroll al explorador
+  renderGenreButtons();
   window.scrollTo({ top: 0, behavior: 'smooth' });
 
-  // Foco al primer botón de género
   setTimeout(() => {
-    const firstBtn = dom.genreBtnGrid.querySelector('.genre-filter-btn');
-    if (firstBtn) focusAndCenter(firstBtn);
+    const first = dom.genreBtnGrid?.querySelector('.genre-filter-btn');
+    if (first) focusAndCenter(first);
   }, 150);
 }
 
-/**
- * Oculta el explorador y vuelve al layout Netflix
- */
 function hideCategoryExplorer() {
-  if (dom.categoryExplorer) dom.categoryExplorer.classList.add('hidden');
-  if (dom.heroBanner) dom.heroBanner.classList.remove('hidden');
+  toggleHidden(dom.categoryExplorer, true);
 
-  // Resetear estado del explorador
   state.explorer.activeGenreId = null;
   state.explorer.currentPage = 1;
-  if (dom.exploreGrid) dom.exploreGrid.innerHTML = '';
-  if (dom.explorerResultsTitle) dom.explorerResultsTitle.textContent = 'Selecciona un género para explorar';
-  if (dom.exploreLoadMoreBtn) dom.exploreLoadMoreBtn.classList.add('hidden');
-  if (dom.genreBtnGrid) {
-    dom.genreBtnGrid.querySelectorAll('.genre-filter-btn').forEach(b => b.classList.remove('active'));
-  }
+  state.explorer.totalPages = 1;
 
-  // Cargar de nuevo la pestaña activa
-  loadActiveTab('movie', 1);
+  if (dom.exploreGrid) dom.exploreGrid.replaceChildren();
+  if (dom.explorerResultsTitle) {
+    dom.explorerResultsTitle.textContent = 'Selecciona un gÃ©nero para explorar';
+  }
+  toggleHidden(dom.exploreLoadMoreBtn, true);
+  dom.genreBtnGrid?.querySelectorAll('.genre-filter-btn')
+    .forEach((b) => b.classList.remove('active'));
+
+  // Vuelve a la pestaÃ±a desde la que se entrÃ³, no a "movie" hardcodeado.
+  loadActiveTab(state.currentTab, 1);
 }
 
 /**
- * Carga resultados filtrados por género desde TMDb
+ * Carga tÃ­tulos de un gÃ©nero.
+ * @param {number} genreId
+ * @param {string} genreName
+ * @param {number} [page]
  */
 async function loadGenreResults(genreId, genreName, page = 1) {
+  const token = ++state.tokens.explorer;
+
   state.explorer.activeGenreId = genreId;
   state.explorer.currentPage = page;
 
   if (dom.explorerResultsTitle) {
-    dom.explorerResultsTitle.textContent = `Películas de ${genreName}`;
+    dom.explorerResultsTitle.textContent = `PelÃ­culas de ${genreName}`;
   }
 
   if (page === 1) {
-    if (dom.exploreGrid) dom.exploreGrid.innerHTML = '';
-    if (dom.explorerLoader) dom.explorerLoader.classList.remove('hidden');
+    dom.exploreGrid?.replaceChildren();
+    toggleHidden(dom.explorerLoader, false);
   }
 
   try {
@@ -1106,128 +1300,84 @@ async function loadGenreResults(genreId, genreName, page = 1) {
       sort_by: 'popularity.desc',
       page
     });
+    if (token !== state.tokens.explorer) return;
 
-    state.explorer.totalPages = data.total_pages || 1;
-    const items = (data.results || []).filter(i => i.title || i.name).map(i => ({
-      ...i,
-      media_type: 'movie'
-    }));
-
-    if (dom.explorerLoader) dom.explorerLoader.classList.add('hidden');
-
-    if (!dom.exploreGrid) return;
+    state.explorer.totalPages = Math.min(data.total_pages || 1, 500);
 
     const fragment = document.createDocumentFragment();
-    items.forEach(item => fragment.appendChild(createMediaCard(item)));
+    (data.results || []).forEach((item) => fragment.appendChild(createMediaCard(item)));
     dom.exploreGrid.appendChild(fragment);
 
-    // Mostrar/ocultar botón Cargar Más
-    if (dom.exploreLoadMoreBtn) {
-      dom.exploreLoadMoreBtn.classList.toggle('hidden', page >= state.explorer.totalPages);
-    }
-
+    toggleHidden(dom.exploreLoadMoreBtn, page >= state.explorer.totalPages);
   } catch (error) {
-    console.warn('[PelisFlix] Explorador en modo demo:', error.message);
-    if (dom.explorerLoader) dom.explorerLoader.classList.add('hidden');
+    if (token !== state.tokens.explorer) return;
+    console.warn(`[Peloflix] Explorador en modo demostraciÃ³n (${error.message})`);
+    toggleHidden(dom.explorerLoader, true);
 
-    // Fallback con demo items
-    const filtered = DEMO_ITEMS.filter(i => i.category === 'movie' || i.media_type === 'movie');
-    if (dom.exploreGrid) {
+    // Solo en la primera pÃ¡gina: en pÃ¡ginas siguientes se acumulan resultados
+    // reales y no queremos mezclarlos con la demo.
+    if (page === 1) {
       const fragment = document.createDocumentFragment();
-      filtered.forEach(item => fragment.appendChild(createMediaCard(item)));
-      dom.exploreGrid.appendChild(fragment);
+      DEMO_ITEMS.filter((item) => item.category === 'movie')
+        .forEach((item) => fragment.appendChild(createMediaCard(item)));
+      dom.exploreGrid?.appendChild(fragment);
     }
-    if (dom.exploreLoadMoreBtn) dom.exploreLoadMoreBtn.classList.add('hidden');
+    toggleHidden(dom.exploreLoadMoreBtn, true);
+  } finally {
+    if (token === state.tokens.explorer) toggleHidden(dom.explorerLoader, true);
   }
 }
 
-/**
- * Gestiona la visibilidad de las secciones según la pestaña activa
- */
-function showMovieNetflixLayout() {
-  if (dom.homeRowsContainer) dom.homeRowsContainer.classList.remove('hidden');
-  if (dom.catalogSection) dom.catalogSection.classList.add('hidden');
-  if (dom.categoryExplorer) dom.categoryExplorer.classList.add('hidden');
-  if (dom.heroBanner) dom.heroBanner.classList.remove('hidden');
+/* ==========================================================================
+ * 12. REPRODUCTOR â€” UTILIDADES
+ * ========================================================================== */
+
+/** Â¿EstÃ¡ el reproductor visible? */
+function isPlayerActive() {
+  return Boolean(dom.modalPlayerSection) &&
+    !dom.modalPlayerSection.classList.contains('hidden');
 }
 
-function showCatalogLayout() {
-  if (dom.homeRowsContainer) dom.homeRowsContainer.classList.add('hidden');
-  if (dom.catalogSection) dom.catalogSection.classList.remove('hidden');
-  if (dom.categoryExplorer) dom.categoryExplorer.classList.add('hidden');
-  if (dom.heroBanner) dom.heroBanner.classList.remove('hidden');
-}
-
-// ============================================================================
-// 8. REPRODUCTOR MULTISERVIDOR Y MODAL FLOTANTE
-// ============================================================================
-
-function buildEmbedUrl(serverKey, playback) {
-  const server = CONFIG.SERVERS[serverKey] || CONFIG.SERVERS.vidsrc;
-  if (playback.type === 'movie') {
-    return server.getMovieUrl(playback.id);
-  } else {
-    return server.getTvUrl(playback.id, playback.season, playback.episode);
-  }
-}
-
-// ============================================================================
-// FUNCIONES DE CONTROL DE PANTALLA COMPLETA (FULLSCREEN - SMART TV & WEB)
-// ============================================================================
-
-/**
- * Solicita pantalla completa con compatibilidad multidispositivo (Android TV, WebOS, Tizen, Webkit)
- */
+/** Solicita pantalla completa con fallbacks multidispositivo. */
 function requestFullscreenSafe(element) {
-  if (!element) return;
+  if (!element || !document.fullscreenEnabled && !document.webkitFullscreenEnabled) return;
   try {
-    if (element.requestFullscreen) {
-      element.requestFullscreen().catch(err => {
-        console.warn('[PelisFlix] Solicitud de pantalla completa rechazada o no permitida:', err);
-      });
-    } else if (element.webkitRequestFullscreen) {
-      element.webkitRequestFullscreen();
-    } else if (element.mozRequestFullScreen) {
-      element.mozRequestFullScreen();
-    } else if (element.msRequestFullscreen) {
-      element.msRequestFullscreen();
+    const request =
+      element.requestFullscreen ||
+      element.webkitRequestFullscreen ||
+      element.mozRequestFullScreen ||
+      element.msRequestFullscreen;
+    if (!request) return;
+    const result = request.call(element);
+    if (result && typeof result.catch === 'function') {
+      result.catch(() => { /* el navegador puede rechazarlo sin gesto de usuario */ });
     }
-  } catch (err) {
-    console.warn('[PelisFlix] Error al solicitar pantalla completa:', err);
+  } catch (error) {
+    console.warn('[Peloflix] Pantalla completa no disponible:', error);
   }
 }
 
-/**
- * Sale del modo pantalla completa de forma segura
- */
+/** Sale de pantalla completa si estÃ¡ activa. */
 function exitFullscreenSafe() {
   try {
-    const isFull = document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement;
-    if (isFull) {
-      if (document.exitFullscreen) {
-        document.exitFullscreen().catch(() => {});
-      } else if (document.webkitExitFullscreen) {
-        document.webkitExitFullscreen();
-      } else if (document.mozCancelFullScreen) {
-        document.mozCancelFullScreen();
-      } else if (document.msExitFullscreen) {
-        document.msExitFullscreen();
-      }
-    }
-  } catch (err) {
-    console.warn('[PelisFlix] Error saliendo de pantalla completa:', err);
+    const active = document.fullscreenElement || document.webkitFullscreenElement;
+    if (!active) return;
+    const exit =
+      document.exitFullscreen ||
+      document.webkitExitFullscreen ||
+      document.mozCancelFullScreen ||
+      document.msExitFullscreen;
+    if (!exit) return;
+    const result = exit.call(document);
+    if (result && typeof result.catch === 'function') result.catch(() => {});
+  } catch (error) {
+    console.warn('[Peloflix] No se pudo salir de pantalla completa:', error);
   }
 }
 
-// ============================================================================
-// AUTO-HIDE UI PARA LA BARRA DE CONTROLES DEL REPRODUCTOR (3S DE INACTIVIDAD)
-// ============================================================================
-let playerControlsTimer = null;
-const PLAYER_CONTROLS_TIMEOUT_MS = 3000;
-
-function isPlayerActive() {
-  return dom.modalPlayerSection && !dom.modalPlayerSection.classList.contains('hidden');
-}
+/* ==========================================================================
+ * 13. REPRODUCTOR â€” AUTO-OCULTADO DE CONTROLES
+ * ========================================================================== */
 
 function showPlayerControls() {
   if (!dom.playerTopBar) return;
@@ -1237,7 +1387,7 @@ function showPlayerControls() {
 function hidePlayerControls() {
   if (!isPlayerActive() || !dom.playerTopBar) return;
 
-  // No ocultar si algún elemento interno de la barra (selector, botón) tiene foco activo
+  // No ocultar si el foco estÃ¡ dentro de la barra: el usuario estÃ¡ navegÃ¡ndola.
   if (dom.playerTopBar.contains(document.activeElement)) {
     resetPlayerControlsTimer();
     return;
@@ -1246,413 +1396,487 @@ function hidePlayerControls() {
   dom.playerTopBar.classList.add('is-hidden', 'hidden');
 }
 
+/** Reinicia la cuenta atrÃ¡s de 3s y muestra los controles. */
 function resetPlayerControlsTimer() {
   if (!isPlayerActive()) return;
 
-  // Reaparecer inmediatamente ante cualquier interacción
   showPlayerControls();
-
-  if (playerControlsTimer) {
-    clearTimeout(playerControlsTimer);
-    playerControlsTimer = null;
-  }
-
-  // Ocultar tras 3 segundos de inactividad
-  playerControlsTimer = setTimeout(() => {
-    hidePlayerControls();
-  }, PLAYER_CONTROLS_TIMEOUT_MS);
+  clearTimeout(playerControlsTimer);
+  playerControlsTimer = setTimeout(hidePlayerControls, PLAYER_CONTROLS_TIMEOUT_MS);
 }
 
 function clearPlayerControlsTimer() {
-  if (playerControlsTimer) {
-    clearTimeout(playerControlsTimer);
-    playerControlsTimer = null;
-  }
+  clearTimeout(playerControlsTimer);
+  playerControlsTimer = null;
   showPlayerControls();
 }
 
+/* ==========================================================================
+ * 14. REPRODUCTOR â€” SERVIDORES
+ * ========================================================================== */
+
+/**
+ * Construye la URL de embed del proveedor activo.
+ * @param {object} playback
+ * @returns {string}
+ */
+function buildEmbedUrl(playback) {
+  const server = CONFIG.SERVERS[state.selectedServer] || CONFIG.SERVERS.unlimplay;
+  return playback.type === 'movie'
+    ? server.getMovieUrl(playback.id)
+    : server.getTvUrl(playback.id, playback.season, playback.episode);
+}
+
+/** Refleja el proveedor activo en el badge y en los botones. */
 function updateServerActiveBadge(serverKey) {
   const server = CONFIG.SERVERS[serverKey];
   if (!server) return;
+
   if (dom.serverBadgeText) {
-    dom.serverBadgeText.textContent = server.badge || server.name;
+    dom.serverBadgeText.textContent = `${server.name} â€” ${server.label}`;
+  }
+
+  dom.serverBtnGroup?.querySelectorAll('.server-btn').forEach((btn) => {
+    const isActive = btn.dataset.server === serverKey;
+    btn.classList.toggle('active', isActive);
+    btn.setAttribute('aria-pressed', String(isActive));
+  });
+}
+
+/**
+ * Cambia de proveedor.
+ * @param {string} serverKey
+ */
+function handleServerChange(serverKey) {
+  if (!CONFIG.SERVERS[serverKey]) return;
+  state.selectedServer = serverKey;
+  updateServerActiveBadge(serverKey);
+
+  if (state.activeItemDetails) {
+    const playback = state.currentPlayback;
+    if (playback && playback.id) {
+      // Recargar el iframe es lo Ãºnico que corta el audio del proveedor previo.
+      dom.videoPlayerIframe.src = buildEmbedUrl(playback);
+    }
+    showToast(`Fuente: ${CONFIG.SERVERS[serverKey].name}`);
   }
 }
 
-function playHlsStream(streamUrl, channelName = 'Canal') {
+/** Rota al siguiente proveedor con botÃ³n en la interfaz. */
+function cycleNextServer() {
+  const keys = CONFIG.SERVER_CYCLE;
+  const next = keys[(keys.indexOf(state.selectedServer) + 1) % keys.length];
+  handleServerChange(next);
+}
+
+/** Muestra u oculta el selector de servidores ( irrelevante en IPTV). */
+function setServerControlsVisible(visible) {
+  toggleHidden(dom.videoSourcesContainer, !visible);
+  toggleHidden(dom.serverActiveBadge, !visible);
+  toggleHidden(dom.quickSwitchServerBtn, !visible);
+}
+
+/* ==========================================================================
+ * 15. REPRODUCTOR â€” TV EN VIVO (HLS)
+ * ========================================================================== */
+
+const HLS_CDN = 'https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js';
+
+/**
+ * Carga HLS.js bajo demanda: la pestaÃ±a "TV en Vivo" es la Ãºnica que lo
+ * necesita, y pesa lo suficiente como para no bloquear el arranque.
+ * @returns {Promise<void>}
+ */
+function loadHlsLibrary() {
+  if (window.Hls) return Promise.resolve();
+  if (hlsLoadingPromise) return hlsLoadingPromise;
+
+  hlsLoadingPromise = new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = HLS_CDN;
+    script.async = true;
+    script.crossOrigin = 'anonymous';
+    script.addEventListener('load', resolve, { once: true });
+    script.addEventListener('error', () => reject(new Error('HLS_LOAD_FAILED')), { once: true });
+    document.head.appendChild(script);
+  });
+
+  return hlsLoadingPromise;
+}
+
+/** Destruye la instancia de HLS si existe. */
+function destroyHls() {
+  if (!hlsInstance) return;
+  try {
+    hlsInstance.destroy();
+  } catch (error) {
+    console.warn('[Peloflix] Error destruyendo HLS:', error);
+  }
+  hlsInstance = null;
+}
+
+/**
+ * Reproduce una transmisiÃ³n .m3u8.
+ * @param {string} streamUrl
+ * @param {string} channelName
+ */
+async function playHlsStream(streamUrl, channelName) {
   if (!dom.liveTvPlayer) return;
 
-  if (hlsInstance) {
-    try {
-      hlsInstance.destroy();
-    } catch (e) {
-      console.warn('[PelisFlix] Error al destruir HLS previo:', e);
-    }
-    hlsInstance = null;
-  }
+  destroyHls();
 
-  // Validación de URL de transmisión
-  if (!streamUrl || streamUrl === 'URL_M3U8_AQUI' || !streamUrl.startsWith('http')) {
-    showToast(`Canal ${channelName}: Reemplaza "URL_M3U8_AQUI" por tu enlace .m3u8 en liveChannels.`);
+  if (!streamUrl || !/^https?:\/\//i.test(streamUrl)) {
+    showToast(`Canal "${channelName}": reemplaza su .m3u8 en LIVE_CHANNELS (app.js).`);
     return;
   }
 
-  if (window.Hls && Hls.isSupported()) {
-    hlsInstance = new Hls({
+  try {
+    await loadHlsLibrary();
+  } catch {
+    showToast('No se pudo cargar el reproductor HLS.');
+    return;
+  }
+
+  const HlsCtor = window.Hls;
+  const video = dom.liveTvPlayer;
+
+  if (HlsCtor && HlsCtor.isSupported()) {
+    hlsInstance = new HlsCtor({
       enableWorker: true,
       lowLatencyMode: true,
       backBufferLength: 60
     });
 
     hlsInstance.loadSource(streamUrl);
-    hlsInstance.attachMedia(dom.liveTvPlayer);
+    hlsInstance.attachMedia(video);
 
-    hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => {
-      dom.liveTvPlayer.play().catch(e => {
-        console.warn('[PelisFlix] Autoplay bloqueado por políticas del navegador:', e);
+    hlsInstance.on(HlsCtor.Events.MANIFEST_PARSED, () => {
+      video.play().catch(() => {
+        showToast('Pulsa reproducir: el navegador bloqueÃ³ el inicio automÃ¡tico.');
       });
     });
 
-    hlsInstance.on(Hls.Events.ERROR, (event, data) => {
-      if (data.fatal) {
-        switch (data.type) {
-          case Hls.ErrorTypes.NETWORK_ERROR:
-            console.warn('[PelisFlix] Error de red HLS, intentando reconectar...');
-            hlsInstance.startLoad();
-            break;
-          case Hls.ErrorTypes.MEDIA_ERROR:
-            console.warn('[PelisFlix] Error de medios HLS, recuperando...');
-            hlsInstance.recoverMediaError();
-            break;
-          default:
-            console.error('[PelisFlix] Error fatal irrecuperable en HLS:', data);
-            showToast(`No se pudo cargar la señal de ${channelName}.`);
-            hlsInstance.destroy();
-            hlsInstance = null;
-            break;
-        }
+    hlsInstance.on(HlsCtor.Events.ERROR, (_evt, data) => {
+      if (!data.fatal) return;
+      switch (data.type) {
+        case HlsCtor.ErrorTypes.NETWORK_ERROR:
+          console.warn('[Peloflix] Error de red HLS, reintentandoâ€¦');
+          hlsInstance.startLoad();
+          break;
+        case HlsCtor.ErrorTypes.MEDIA_ERROR:
+          console.warn('[Peloflix] Error de medios HLS, recuperandoâ€¦');
+          hlsInstance.recoverMediaError();
+          break;
+        default:
+          console.error('[Peloflix] Error fatal de HLS:', data);
+          showToast(`No se pudo cargar la seÃ±al de "${channelName}".`);
+          destroyHls();
       }
     });
-  } else if (dom.liveTvPlayer.canPlayType('application/vnd.apple.mpegurl')) {
-    // Soporte HLS nativo (Safari en macOS/iOS, Smart TVs WebKit)
-    dom.liveTvPlayer.src = streamUrl;
-    dom.liveTvPlayer.addEventListener('loadedmetadata', () => {
-      dom.liveTvPlayer.play().catch(e => console.warn('[PelisFlix] Autoplay bloqueado:', e));
+    return;
+  }
+
+  // Safari / WebKit: HLS nativo
+  if (video.canPlayType('application/vnd.apple.mpegurl')) {
+    video.src = streamUrl;
+    video.addEventListener('loadedmetadata', () => {
+      video.play().catch(() => {});
     }, { once: true });
-  } else {
-    showToast('Tu navegador no cuenta con soporte para reproducción HLS');
+    return;
   }
+
+  showToast('Este navegador no admite reproducciÃ³n HLS.');
 }
 
-function openLiveChannel(channel) {
-  if (!channel) return;
-  state.lastFocusedElementBeforeModal = document.activeElement;
-
-  stopAndClearPlayer();
-
-  dom.modalHeroCover.classList.add('hidden');
-  dom.modalTvEpisodes.classList.add('hidden');
-  dom.mediaModal.classList.remove('hidden');
-  document.body.style.overflow = 'hidden';
-
-  // Ocultar iframe, mostrar reproductor de video nativo
-  if (dom.videoPlayerIframe) {
-    dom.videoPlayerIframe.src = '';
-    dom.videoPlayerIframe.style.display = 'none';
-  }
-  if (dom.liveTvPlayer) {
-    dom.liveTvPlayer.style.display = 'block';
-  }
-
-  const chNum = channel.number ? ` (Canal ${channel.number})` : '';
-  const chCategory = channel.category || 'Nacional';
-  const chDesc = channel.description || channel.desc || `Transmisión oficial de ${channel.name} en directo.`;
-
-  // Metadatos en la barra de control del reproductor
-  dom.playerPlayingTitle.innerHTML = `<span class="live-dot-pulse">🔴</span> ${channel.name} <span class="badge-live-stream">EN DIRECTO</span>`;
-  dom.modalTitle.textContent = `${channel.name}${chNum}`;
-  dom.modalTagline.textContent = `Transmisión oficial en vivo | ${chCategory}`;
-  dom.modalRating.innerHTML = `<i class="fa-solid fa-satellite-dish"></i> Señal HD`;
-  dom.modalYear.textContent = '24/7';
-  dom.modalDuration.textContent = 'En Vivo';
-  dom.modalType.textContent = 'IPTV Streaming';
-  dom.modalOverview.textContent = chDesc;
-
-  const fallbackLogoSvg = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="300" height="450" viewBox="0 0 300 450"><rect fill="%231a1a1a" width="300" height="450"/><text fill="%23E50914" font-family="sans-serif" font-size="22" dy="10" font-weight="bold" x="50%" y="50%" text-anchor="middle">${channel.name}</text></svg>`;
-  dom.modalPoster.onerror = () => {
-    dom.modalPoster.onerror = null;
-    dom.modalPoster.src = fallbackLogoSvg;
-  };
-  dom.modalPoster.src = channel.logo || fallbackLogoSvg;
-  dom.modalGenres.innerHTML = `<span class="genre-tag">${chCategory}</span><span class="genre-tag">IPTV</span><span class="genre-tag">HLS</span>`;
-
-  // Ocultar selector de servidores de películas (en TV en vivo es HLS directo)
-  if (dom.serverSelect && dom.serverSelect.parentElement) {
-    dom.serverSelect.parentElement.style.display = 'none';
-  }
-  if (dom.serverActiveBadge) {
-    dom.serverActiveBadge.style.display = 'none';
-  }
-  if (dom.quickSwitchServerBtn) {
-    dom.quickSwitchServerBtn.style.display = 'none';
-  }
-
-  dom.modalPlayerSection.classList.remove('hidden');
-
-  // Reproducción HLS del canal
-  playHlsStream(channel.stream_url, channel.name);
-
-  // Activación automática de pantalla completa para Smart TV y Móviles
-  setTimeout(() => {
-    requestFullscreenSafe(dom.modalPlayerSection);
-  }, 120);
-
-  resetPlayerControlsTimer();
+/** Limpia el <video> de TV en vivo. */
+function resetLiveVideo() {
+  const video = dom.liveTvPlayer;
+  if (!video) return;
+  video.pause();
+  video.removeAttribute('src');
+  video.load();
+  video.hidden = true;
 }
 
-function startPlayback(playbackData) {
-  state.currentPlayback = { ...playbackData };
+/* ==========================================================================
+ * 16. REPRODUCTOR â€” CICLO DE VIDA
+ * ========================================================================== */
 
-  // Detener y destruir HLS si estaba activo
-  if (hlsInstance) {
-    try {
-      hlsInstance.destroy();
-    } catch (e) {}
-    hlsInstance = null;
-  }
-  if (dom.liveTvPlayer) {
-    dom.liveTvPlayer.pause();
-    dom.liveTvPlayer.removeAttribute('src');
-    dom.liveTvPlayer.src = '';
-    dom.liveTvPlayer.load();
-    dom.liveTvPlayer.style.display = 'none';
-  }
+/**
+ * Arranca la reproducciÃ³n de una pelÃ­cula o episodio.
+ * @param {{type: 'movie'|'tv', id: number, season?: number, episode?: number, title: string}} playback
+ */
+function startPlayback(playback) {
+  state.currentPlayback = { ...playback };
 
-  // Mostrar iframe y controles multiservidor
-  if (dom.videoPlayerIframe) {
-    dom.videoPlayerIframe.style.display = 'block';
-  }
-  if (dom.serverSelect && dom.serverSelect.parentElement) {
-    dom.serverSelect.parentElement.style.display = '';
-  }
+  destroyHls();
+  resetLiveVideo();
 
-  const url = buildEmbedUrl(state.selectedServer, state.currentPlayback);
+  // El reproductor de embeds siempre es el iframe.
+  dom.videoPlayerIframe.hidden = false;
+  setServerControlsVisible(true);
 
-  dom.playerPlayingTitle.textContent = state.currentPlayback.title;
-  if (dom.serverSelect) dom.serverSelect.value = state.selectedServer;
+  dom.playerPlayingTitle.textContent = playback.title;
   updateServerActiveBadge(state.selectedServer);
-  dom.videoPlayerIframe.src = url;
-  dom.modalPlayerSection.classList.remove('hidden');
 
-  // ACTIVACIÓN AUTOMÁTICA DE PANTALLA COMPLETA
+  // Asignar `src` es lo que detiene el audio del proveedor anterior.
+  dom.videoPlayerIframe.src = buildEmbedUrl(state.currentPlayback);
+  toggleHidden(dom.modalPlayerSection, false);
+
   requestFullscreenSafe(dom.modalPlayerSection);
 
-  // Llevar foco al selector de servidores o botón de volver
-  focusAndCenter(dom.serverSelect);
+  const activeBtn = dom.serverBtnGroup?.querySelector('.server-btn.active');
+  focusAndCenter(activeBtn || dom.playerCloseViewBtn);
 
-  // Iniciar auto-ocultamiento tras 3 segundos de inactividad
   resetPlayerControlsTimer();
 }
 
-function handleServerChange(newServerKey) {
-  if (!CONFIG.SERVERS[newServerKey]) return;
-  state.selectedServer = newServerKey;
-  if (dom.serverSelect) dom.serverSelect.value = newServerKey;
-  updateServerActiveBadge(newServerKey);
+/**
+ * Abre un canal de TV en vivo.
+ * @param {object} channel
+ */
+function openLiveChannel(channel) {
+  if (!channel) return;
 
-  if (state.currentPlayback && state.currentPlayback.id) {
-    const newUrl = buildEmbedUrl(newServerKey, state.currentPlayback);
-    dom.videoPlayerIframe.src = newUrl;
-    showToast(`Cambiado a: ${CONFIG.SERVERS[newServerKey].name}`);
-  }
+  state.lastFocusedElement = document.activeElement;
+  stopAndClearPlayer();
+
+  toggleHidden(dom.modalHeroCover, true);
+  toggleHidden(dom.modalTvEpisodes, true);
+  toggleHidden(dom.mediaModal, false);
+  syncScrollLock();
+
+  // IPTV: solo el <video>, sin selector de servidores.
+  dom.videoPlayerIframe.hidden = true;
+  dom.videoPlayerIframe.removeAttribute('src');
+  dom.liveTvPlayer.hidden = false;
+  setServerControlsVisible(false);
+
+  // TÃ­tulo en la barra del reproductor, con distintivo "en directo".
+  dom.playerPlayingTitle.replaceChildren();
+  dom.playerPlayingTitle.append(
+    makeEl('span', 'live-dot-pulse', 'ðŸ”´'),
+    document.createTextNode(` ${channel.name} `),
+    makeEl('span', 'badge-live-stream', 'EN DIRECTO')
+  );
+
+  // Metadatos del modal
+  const channelNumber = channel.number ? ` (Canal ${channel.number})` : '';
+  const description = channel.description ||
+    `TransmisiÃ³n oficial de ${channel.name} en directo.`;
+
+  dom.modalTitle.textContent = `${channel.name}${channelNumber}`;
+  dom.modalTagline.textContent = `TransmisiÃ³n en vivo Â· ${channel.category || 'Nacional'}`;
+  dom.modalRating.replaceChildren(makeIcon('fa-solid fa-satellite-dish'),
+    document.createTextNode(' SeÃ±al HD'));
+  dom.modalYear.textContent = '24/7';
+  dom.modalDuration.textContent = 'En vivo';
+  dom.modalType.textContent = 'IPTV';
+  dom.modalOverview.textContent = description;
+
+  const logo = channel.logo || CONFIG.fallbackLogo(channel.name);
+  dom.modalPoster.src = logo;
+  dom.modalPoster.onerror = null;
+
+  dom.modalGenres.replaceChildren(
+    makeEl('span', 'genre-tag', channel.category || 'Nacional'),
+    makeEl('span', 'genre-tag', 'IPTV'),
+    makeEl('span', 'genre-tag', 'HLS')
+  );
+
+  toggleHidden(dom.modalPlayerSection, false);
+  playHlsStream(channel.stream_url, channel.name);
+
+  setTimeout(() => requestFullscreenSafe(dom.modalPlayerSection), 120);
+  resetPlayerControlsTimer();
 }
 
-function cycleNextServer() {
-  const serverKeys = Object.keys(CONFIG.SERVERS);
-  const currentIndex = serverKeys.indexOf(state.selectedServer);
-  const nextIndex = (currentIndex + 1) % serverKeys.length;
-  const nextKey = serverKeys[nextIndex];
-  handleServerChange(nextKey);
-}
-
+/**
+ * Detiene todo lo que estÃ© sonando y deja el reproductor en blanco.
+ * Es el Ãºnico punto que garantiza el corte de audio:
+ *  - `iframe.src = ''` desmonta el documento y corta su audio.
+ *  - `hls.destroy()` cierra los workers y las peticiones de segmentos.
+ */
 function stopAndClearPlayer() {
-  // Limpiar temporizador y restaurar controles visibles para la próxima reproducción
   clearPlayerControlsTimer();
-
-  // Salir de pantalla completa si estaba activa
   exitFullscreenSafe();
 
   if (dom.videoPlayerIframe) {
-    dom.videoPlayerIframe.src = '';
-    dom.videoPlayerIframe.style.display = 'block';
+    dom.videoPlayerIframe.removeAttribute('src');
+    dom.videoPlayerIframe.hidden = false;
   }
 
-  // Detener y destruir HLS asegurando cortar el audio por completo
-  if (hlsInstance) {
-    try {
-      hlsInstance.destroy();
-    } catch (e) {
-      console.warn('[PelisFlix] Error destruyendo instancia HLS:', e);
-    }
-    hlsInstance = null;
-  }
+  destroyHls();
+  resetLiveVideo();
 
-  if (dom.liveTvPlayer) {
-    dom.liveTvPlayer.pause();
-    dom.liveTvPlayer.removeAttribute('src');
-    dom.liveTvPlayer.src = '';
-    dom.liveTvPlayer.load();
-    dom.liveTvPlayer.style.display = 'none';
-  }
+  setServerControlsVisible(true);
+  toggleHidden(dom.modalPlayerSection, true);
 
-  if (dom.serverSelect && dom.serverSelect.parentElement) {
-    dom.serverSelect.parentElement.style.display = '';
-  }
-  if (dom.serverActiveBadge) {
-    dom.serverActiveBadge.style.display = '';
-  }
-  if (dom.quickSwitchServerBtn) {
-    dom.quickSwitchServerBtn.style.display = '';
-  }
-
-  dom.modalPlayerSection.classList.add('hidden');
-  dom.playerPlayingTitle.textContent = '';
+  if (dom.playerPlayingTitle) dom.playerPlayingTitle.textContent = '';
   state.currentPlayback = { type: null, id: null, season: 1, episode: 1, title: '' };
 }
 
+/* ==========================================================================
+ * 17. MODAL DE TÃTULO
+ * ========================================================================== */
+
 function closeMediaModal() {
   stopAndClearPlayer();
-  dom.mediaModal.classList.add('hidden');
-  document.body.style.overflow = '';
+  toggleHidden(dom.mediaModal, true);
+  toggleHidden(dom.modalHeroCover, false);
+  toggleHidden(dom.modalTvEpisodes, true);
+  syncScrollLock();
+
   state.activeItemDetails = null;
 
-  // Restaurar foco al elemento que abrió el modal
-  if (state.lastFocusedElementBeforeModal) {
-    focusAndCenter(state.lastFocusedElementBeforeModal);
+  if (state.lastFocusedElement && document.contains(state.lastFocusedElement)) {
+    focusAndCenter(state.lastFocusedElement);
   }
 }
 
+/**
+ * Abre el detalle de un tÃ­tulo.
+ * @param {number} id
+ * @param {'movie'|'tv'} mediaType
+ * @param {boolean} [autoPlay]
+ */
 async function openMediaModal(id, mediaType, autoPlay = false) {
-  stopAndClearPlayer();
-  dom.modalHeroCover.classList.remove('hidden');
-  dom.modalTvEpisodes.classList.add('hidden');
-  dom.episodesContainer.innerHTML = '';
-  dom.mediaModal.classList.remove('hidden');
-  document.body.style.overflow = 'hidden';
+  const token = ++state.tokens.modal;
 
-  // Enfocar botón de cerrar o acción principal
+  stopAndClearPlayer();
+  toggleHidden(dom.mediaModal, false);
+  syncScrollLock();
+
   focusAndCenter(dom.modalPlayBtn);
 
+  let details;
   try {
-    let details = null;
-
     if (CONFIG.getApiKey()) {
       details = await getMediaDetails(mediaType, id);
     } else {
-      details = DEMO_ITEMS.find(i => i.id == id) || {
+      details = DEMO_ITEMS.find((item) => item.id === id) || {
         id,
-        title: mediaType === 'movie' ? 'Película en Streaming' : 'Serie en Streaming',
-        overview: 'Disfruta de la mejor calidad. Para ver la cartelera completa en tiempo real de TMDb, ingresa tu API Key en el menú lateral.',
+        title: mediaType === 'movie' ? 'PelÃ­cula en streaming' : 'Serie en streaming',
+        overview: 'Ingresa tu API Key de TMDb en ConfiguraciÃ³n para ver la ficha completa.',
         vote_average: 8.2,
-        media_type: mediaType,
-        genres: [{ name: 'Acción' }, { name: 'Aventura' }]
+        genres: [{ name: 'AcciÃ³n' }, { name: 'Aventura' }]
       };
     }
+  } catch (error) {
+    console.error('[Peloflix] No se pudo cargar el detalle:', error);
+    showToast('No se pudieron cargar los detalles del tÃ­tulo');
+    return;
+  }
 
-    state.activeItemDetails = { ...details, media_type: mediaType };
+  // El usuario pudo abrir otro tÃ­tulo mientras esperÃ¡bamos.
+  if (token !== state.tokens.modal) return;
 
-    const isMovie = mediaType === 'movie';
-    const title = details.title || details.name || 'Sin Título';
-    const year = formatYear(details.release_date || details.first_air_date);
-    const rating = details.vote_average ? details.vote_average.toFixed(1) : 'S/R';
-    const overview = details.overview || 'Sinopsis no disponible en español en este momento.';
-    const tagline = details.tagline || '';
-    const duration = isMovie 
-      ? (details.runtime ? `${details.runtime} min` : 'Duración estándar')
-      : (details.number_of_seasons ? `${details.number_of_seasons} Temporada(s)` : 'Serie TV');
+  const isMovie = mediaType === 'movie';
+  const data = normalizeItem({ ...details, media_type: mediaType, id: details.id || id });
 
-    dom.modalTitle.textContent = title;
-    dom.modalTagline.textContent = tagline ? `"${tagline}"` : '';
-    dom.modalRating.innerHTML = `<i class="fa-solid fa-star"></i> ${rating}`;
-    dom.modalYear.textContent = year;
-    dom.modalDuration.textContent = duration;
-    dom.modalType.textContent = isMovie ? 'Película' : 'Serie TV';
-    dom.modalOverview.textContent = overview;
+  state.activeItemDetails = { ...details, media_type: mediaType, id: details.id || id };
+  state.activeSeason = 1;
 
-    const backdropUrl = details.backdrop_path 
-      ? `${CONFIG.BACKDROP_BASE_URL}${details.backdrop_path}` 
-      : (details.poster_path ? `${CONFIG.IMAGE_BASE_URL}${details.poster_path}` : '');
+  // --- Textos ---
+  dom.modalTitle.textContent = data.title;
+  dom.modalTagline.textContent = details.tagline ? `â€œ${details.tagline}â€` : '';
+  dom.modalRating.replaceChildren(makeIcon('fa-solid fa-star'),
+    document.createTextNode(` ${data.rating}`));
+  dom.modalYear.textContent = data.year;
+  dom.modalDuration.textContent = isMovie
+    ? (details.runtime ? `${details.runtime} min` : 'DuraciÃ³n estÃ¡ndar')
+    : (details.number_of_seasons
+      ? `${details.number_of_seasons} temporada(s)`
+      : 'Serie de TV');
+  dom.modalType.textContent = isMovie ? 'PelÃ­cula' : 'Serie';
+  dom.modalOverview.textContent = data.overview || 'Sinopsis no disponible en espaÃ±ol.';
 
-    if (backdropUrl) {
-      dom.modalHeroCover.style.backgroundImage = `url("${backdropUrl}")`;
+  // --- Fondo ---
+  const backdropUrl = details.backdrop_path
+    ? CONFIG.BACKDROP_BASE_URL + details.backdrop_path
+    : (details.poster_path ? CONFIG.IMAGE_BASE_URL + details.poster_path : '');
+
+  dom.modalHeroCover.style.backgroundImage = backdropUrl ? `url("${backdropUrl}")` : 'none';
+
+  // --- PÃ³ster ---
+  dom.modalPoster.src = details.poster_path
+    ? CONFIG.IMAGE_BASE_URL + details.poster_path
+    : CONFIG.FALLBACK_POSTER;
+  dom.modalPoster.alt = `Poster de ${data.title}`;
+  dom.modalPoster.onerror = () => {
+    dom.modalPoster.onerror = null;
+    dom.modalPoster.src = CONFIG.FALLBACK_POSTER;
+  };
+
+  // --- GÃ©neros ---
+  dom.modalGenres.replaceChildren();
+  (details.genres || []).forEach((genre) => {
+    dom.modalGenres.appendChild(makeEl('span', 'genre-tag', genre.name));
+  });
+
+  // --- Episodios ---
+  if (!isMovie) {
+    setupTvSeriesModal(details);
+  } else {
+    toggleHidden(dom.modalTvEpisodes, true);
+    dom.episodesContainer.replaceChildren();
+  }
+
+  // --- Autoplay ---
+  if (autoPlay) {
+    if (isMovie) {
+      startPlayback({ type: 'movie', id: state.activeItemDetails.id, title: data.title });
     } else {
-      dom.modalHeroCover.style.backgroundImage = 'none';
-      dom.modalHeroCover.style.backgroundColor = '#181818';
-    }
-
-    dom.modalPoster.src = details.poster_path 
-      ? `${CONFIG.IMAGE_BASE_URL}${details.poster_path}` 
-      : CONFIG.FALLBACK_POSTER;
-
-    dom.modalGenres.innerHTML = '';
-    if (details.genres && details.genres.length > 0) {
-      details.genres.forEach(g => {
-        const span = document.createElement('span');
-        span.className = 'genre-tag';
-        span.textContent = g.name;
-        dom.modalGenres.appendChild(span);
+      startPlayback({
+        type: 'tv', id: state.activeItemDetails.id,
+        season: 1, episode: 1, title: `${data.title} Â· T1:E1`
       });
     }
-
-    if (!isMovie) {
-      setupTvSeriesModal(details);
-    }
-
-    if (autoPlay) {
-      if (isMovie) {
-        startPlayback({ type: 'movie', id: details.id, title: `Película: ${title}` });
-      } else {
-        startPlayback({ type: 'tv', id: details.id, season: 1, episode: 1, title: `${title} - T1:E1` });
-      }
-    }
-
-  } catch (error) {
-    console.error('Error al abrir modal:', error);
-    showToast('No se pudieron cargar los detalles del título');
   }
 }
 
-async function setupTvSeriesModal(seriesDetails) {
-  dom.modalTvEpisodes.classList.remove('hidden');
-  dom.seasonSelect.innerHTML = '';
+/**
+ * Prepara el selector de temporadas.
+ * @param {object} series
+ */
+function setupTvSeriesModal(series) {
+  toggleHidden(dom.modalTvEpisodes, false);
+  dom.seasonSelect.replaceChildren();
 
-  const seasons = (seriesDetails.seasons || []).filter(s => s.season_number > 0);
-  const totalSeasons = seasons.length > 0 ? seasons.length : (seriesDetails.number_of_seasons || 1);
+  const seasons = (series.seasons || []).filter((s) => s.season_number > 0);
+  const totalSeasons = seasons.length || series.number_of_seasons || 1;
 
   for (let i = 1; i <= totalSeasons; i++) {
-    const opt = document.createElement('option');
-    opt.value = i;
-    opt.textContent = `Temporada ${i}`;
-    dom.seasonSelect.appendChild(opt);
+    const option = document.createElement('option');
+    option.value = String(i);
+    option.textContent = `Temporada ${i}`;
+    dom.seasonSelect.appendChild(option);
   }
+  dom.seasonSelect.value = '1';
 
-  state.activeSeason = 1;
-  await loadSeasonEpisodes(seriesDetails.id, 1);
-
-  dom.seasonSelect.onchange = async (e) => {
-    const s = parseInt(e.target.value, 10);
-    state.activeSeason = s;
-    await loadSeasonEpisodes(seriesDetails.id, s);
+  dom.seasonSelect.onchange = (e) => {
+    const season = Number(e.target.value);
+    state.activeSeason = season;
+    loadSeasonEpisodes(series.id, season);
   };
+
+  loadSeasonEpisodes(series.id, 1);
 }
 
+/**
+ * Carga y pinta los episodios de una temporada.
+ * @param {number} tvId
+ * @param {number} seasonNumber
+ */
 async function loadSeasonEpisodes(tvId, seasonNumber) {
-  dom.episodesLoader.classList.remove('hidden');
-  dom.episodesContainer.innerHTML = '';
+  const token = ++state.tokens.episodes;
+
+  toggleHidden(dom.episodesLoader, false);
+  dom.episodesContainer.replaceChildren();
+
+  let episodes = [];
 
   try {
-    let episodes = [];
-
     if (CONFIG.getApiKey()) {
       const data = await getSeasonEpisodes(tvId, seasonNumber);
       episodes = data.episodes || [];
@@ -1660,336 +1884,148 @@ async function loadSeasonEpisodes(tvId, seasonNumber) {
       episodes = Array.from({ length: 8 }, (_, i) => ({
         episode_number: i + 1,
         name: `Episodio ${i + 1}`,
-        overview: `Capítulo ${i + 1} de la temporada ${seasonNumber}. Trama en desarrollo en PelisFlix.`,
-        still_path: null
+        overview: `CapÃ­tulo ${i + 1} de la temporada ${seasonNumber}.`
       }));
     }
+  } catch {
+    if (token !== state.tokens.episodes) return;
+    toggleHidden(dom.episodesLoader, true);
+    dom.episodesContainer.appendChild(makeEl(
+      'p', 'channel-desc', 'No se pudieron cargar los episodios.'
+    ));
+    return;
+  }
 
-    dom.episodesLoader.classList.add('hidden');
+  if (token !== state.tokens.episodes) return;
+  toggleHidden(dom.episodesLoader, true);
 
-    if (episodes.length === 0) {
-      dom.episodesContainer.innerHTML = '<p style="color:var(--text-muted); padding:10px;">No hay información disponible para esta temporada.</p>';
-      return;
-    }
+  if (episodes.length === 0) {
+    dom.episodesContainer.appendChild(makeEl(
+      'p', 'channel-desc', 'No hay episodios disponibles para esta temporada.'
+    ));
+    return;
+  }
 
-    episodes.forEach(ep => {
-      const card = document.createElement('div');
-      card.className = 'episode-card';
-      card.setAttribute('tabindex', '0'); // Habilitado para D-Pad
-      card.setAttribute('role', 'button');
-      card.setAttribute('aria-label', `Episodio ${ep.episode_number}: ${ep.name}`);
+  const seriesTitle = dom.modalTitle.textContent;
+  const fragment = document.createDocumentFragment();
 
-      const stillSrc = ep.still_path ? `${CONFIG.IMAGE_BASE_URL}${ep.still_path}` : CONFIG.FALLBACK_POSTER;
+  episodes.forEach((episode) => {
+    const card = makeEl('article', 'episode-card');
+    card.tabIndex = 0;
+    card.setAttribute('role', 'button');
+    card.setAttribute('aria-label',
+      `Episodio ${episode.episode_number}: ${episode.name || 'Sin tÃ­tulo'}`);
 
-      card.innerHTML = `
-        <div class="episode-thumb-wrapper">
-          <img src="${stillSrc}" alt="${ep.name}" class="episode-thumb" loading="lazy" />
-          <div class="episode-play-badge"><i class="fa-solid fa-play"></i></div>
-        </div>
-        <div class="episode-info">
-          <div class="episode-title-row">
-            <span class="episode-number">E${ep.episode_number}</span>
-            <span class="episode-title">${ep.name}</span>
-          </div>
-          <p class="episode-overview">${ep.overview || 'Sin descripción disponible.'}</p>
-        </div>
-        <div>
-          <button class="btn btn-primary btn-sm" tabindex="-1"><i class="fa-solid fa-play"></i> Ver</button>
-        </div>
-      `;
+    // Miniatura
+    const thumbWrap = makeEl('div', 'episode-thumb-wrapper');
+    const thumb = document.createElement('img');
+    thumb.className = 'episode-thumb';
+    thumb.loading = 'lazy';
+    thumb.alt = episode.name || `Episodio ${episode.episode_number}`;
+    thumb.src = episode.still_path
+      ? CONFIG.IMAGE_BASE_URL + episode.still_path
+      : CONFIG.FALLBACK_POSTER;
+    thumb.addEventListener('error', () => { thumb.src = CONFIG.FALLBACK_POSTER; }, { once: true });
+    thumbWrap.appendChild(thumb);
 
-      const triggerPlay = () => {
-        document.querySelectorAll('.episode-card').forEach(c => c.classList.remove('active'));
-        card.classList.add('active');
+    const playBadge = makeEl('div', 'episode-play-badge');
+    playBadge.appendChild(makeIcon('fa-solid fa-play'));
+    thumbWrap.appendChild(playBadge);
+    card.appendChild(thumbWrap);
 
-        const seriesTitle = dom.modalTitle.textContent;
-        startPlayback({
-          type: 'tv',
-          id: tvId,
-          season: seasonNumber,
-          episode: ep.episode_number,
-          title: `${seriesTitle} - T${seasonNumber}:E${ep.episode_number} (${ep.name})`
-        });
-      };
+    // Datos
+    const info = makeEl('div', 'episode-info');
+    const titleRow = makeEl('div', 'episode-title-row');
+    titleRow.appendChild(makeEl('span', 'episode-number', `E${episode.episode_number}`));
+    const epTitle = makeEl('span', 'episode-title', episode.name || 'Sin tÃ­tulo');
+    epTitle.title = episode.name || '';
+    titleRow.appendChild(epTitle);
+    info.appendChild(titleRow);
+    info.appendChild(makeEl('p', 'episode-overview',
+      episode.overview || 'Sin descripciÃ³n disponible.'));
+    card.appendChild(info);
 
-      card.addEventListener('click', triggerPlay);
-      card.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') triggerPlay();
+    const play = () => {
+      dom.episodesContainer.querySelectorAll('.episode-card')
+        .forEach((c) => c.classList.remove('active'));
+      card.classList.add('active');
+
+      startPlayback({
+        type: 'tv',
+        id: tvId,
+        season: seasonNumber,
+        episode: episode.episode_number,
+        title: `${seriesTitle} Â· T${seasonNumber}:E${episode.episode_number}${episode.name ? ` â€” ${episode.name}` : ''}`
       });
+    };
 
-      card.addEventListener('focus', () => {
-        card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      });
-
-      dom.episodesContainer.appendChild(card);
+    card.addEventListener('click', play);
+    card.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); play(); }
+    });
+    card.addEventListener('focus', () => {
+      card.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
     });
 
-  } catch (err) {
-    dom.episodesLoader.classList.add('hidden');
-    dom.episodesContainer.innerHTML = '<p style="color:var(--text-muted);">No se pudieron cargar los episodios.</p>';
-  }
+    fragment.appendChild(card);
+  });
+
+  dom.episodesContainer.appendChild(fragment);
 }
 
-// ============================================================================
-// 9. NAVEGACIÓN, BÚSQUEDA Y CARGA DE DATOS
-// ============================================================================
+/* ==========================================================================
+ * 18. BUSCADOR
+ * ========================================================================== */
 
-async function loadActiveTab(tab = state.currentTab, page = 1) {
-  state.currentTab = tab;
-  state.currentPage = page;
-  state.searchQuery = '';
-  if (dom.modalSearchInput) dom.modalSearchInput.value = '';
-  if (dom.modalClearSearchBtn) dom.modalClearSearchBtn.classList.add('hidden');
+/** Estado inicial del modal de bÃºsqueda. */
+function renderSearchInitialState() {
+  renderEmptyState(dom.searchResultsGrid, {
+    icon: 'fa-solid fa-magnifying-glass',
+    title: 'Encuentra tu prÃ³xima pelÃ­cula',
+    text: 'Escribe el tÃ­tulo, una saga o el nombre de un actor para ver resultados al instante.'
+  });
 
-  // Actualizar estado activo en la barra de pestañas (Sub-Navbar)
-  if (dom.navTabButtons) {
-    dom.navTabButtons.forEach(btn => {
-      btn.classList.toggle('active', btn.dataset.category === tab);
-    });
-  }
-
-  // ===========================================================
-  // PESTAÑA PELÍCULAS: LAYOUT NETFLIX CON FILAS HORIZONTALES
-  // ===========================================================
-  if (tab === 'movie') {
-    showMovieNetflixLayout();
-    closeSidebar();
-
-    // Cargar Hero con película destacada
-    try {
-      if (CONFIG.getApiKey()) {
-        const heroData = await fetchFromTMDb('/trending/movie/week', { page: 1 });
-        const heroItems = (heroData.results || []).filter(i => i.title).map(i => ({ ...i, media_type: 'movie' }));
-        if (heroItems.length > 0) renderHero(heroItems[0]);
-      } else {
-        const demoHero = DEMO_ITEMS.find(i => i.category === 'movie');
-        if (demoHero) renderHero(demoHero);
-      }
-    } catch (e) {
-      const demoHero = DEMO_ITEMS.find(i => i.category === 'movie');
-      if (demoHero) renderHero(demoHero);
-    }
-
-    // Cargar las 4 filas del layout Netflix
-    loadHomeRows();
-    return;
-  }
-
-  // ===========================================================
-  // PESTAÑA TV EN VIVO: CANALES IPTV
-  // ===========================================================
-  if (tab === 'live') {
-    showCatalogLayout();
-    dom.sectionTitle.textContent = 'TV en Vivo - Canales en Directo';
-    dom.sectionSubtitle.textContent = 'Transmisiones oficiales y señales 24/7 sin cortes';
-    dom.resultsCount.textContent = `${liveChannels.length} canales disponibles`;
-    renderLiveChannels(liveChannels);
-    closeSidebar();
-    return;
-  }
-
-  // ===========================================================
-  // PESTAÑAS SERIES, ANIME, DIBUJOS ANIMADOS: GRILLA ESTÁNDAR
-  // ===========================================================
-  showCatalogLayout();
-
-  const titles = {
-    tv: { title: 'Series de Televisión', subtitle: 'Las mejores series y producciones para maratonear', defaultType: 'tv' },
-    anime: { title: 'Anime Japonés', subtitle: 'Lo mejor de la animación nipona, shonen, seinen y más', defaultType: 'tv' },
-    cartoons: { title: 'Dibujos Animados', subtitle: 'Grandes producciones de animación occidental para toda la familia', defaultType: 'tv' }
-  };
-
-  const meta = titles[tab] || titles.tv;
-  dom.sectionTitle.textContent = meta.title;
-  dom.sectionSubtitle.textContent = meta.subtitle;
-  dom.resultsCount.textContent = '';
-
-  if (page === 1) {
-    showSkeletons(12);
-  } else {
-    dom.loader.classList.remove('hidden');
-  }
-
-  closeSidebar();
-
-  try {
-    let data;
-    if (tab === 'tv') data = await getSeries(page);
-    else if (tab === 'anime') data = await getAnime(page);
-    else if (tab === 'cartoons') data = await getCartoons(page);
-    else data = await getSeries(page);
-
-    state.totalPages = data.total_pages || 1;
-    const rawItems = data.results || [];
-    const defaultType = meta.defaultType || 'tv';
-    const items = rawItems.map(i => ({
-      ...i,
-      media_type: i.media_type || defaultType
-    }));
-
-    if (page === 1 && items.length > 0) {
-      renderHero(items[0]);
-    }
-
-    renderMediaGrid(items, page > 1);
-
-    if (dom.loadMoreBtn) {
-      dom.loadMoreBtn.classList.toggle('hidden', state.currentPage >= state.totalPages);
-    }
-
-  } catch (error) {
-    console.warn(`[PelisFlix] Modo demostración (${error.message}).`);
-
-    let items = DEMO_ITEMS;
-    if (tab === 'tv') items = DEMO_ITEMS.filter(i => i.category === 'tv');
-    else if (tab === 'anime') items = DEMO_ITEMS.filter(i => i.category === 'anime');
-    else if (tab === 'cartoons') items = DEMO_ITEMS.filter(i => i.category === 'cartoons');
-
-    if (page === 1 && items.length > 0) {
-      renderHero(items[0]);
-    }
-
-    renderMediaGrid(items, false);
-    if (dom.loadMoreBtn) dom.loadMoreBtn.classList.add('hidden');
-  } finally {
-    dom.loader.classList.add('hidden');
-  }
-}
-
-async function performSearch(query) {
-  const clean = query.trim();
-  if (!clean) {
-    loadActiveTab('trending', 1);
-    return;
-  }
-
-  state.currentTab = 'search';
-  state.searchQuery = clean;
-  state.currentPage = 1;
-
-  dom.sectionTitle.textContent = `Resultados para "${clean}"`;
-  dom.sectionSubtitle.textContent = 'Búsqueda en tiempo real en PelisFlix';
-  dom.sidebarNavButtons.forEach(btn => btn.classList.remove('active'));
-
-  showSkeletons(8);
-
-  try {
-    const data = await searchMulti(clean, 1);
-    const results = (data.results || []).filter(i => i.media_type === 'movie' || i.media_type === 'tv');
-
-    dom.resultsCount.textContent = `${results.length} título(s) encontrados`;
-    renderMediaGrid(results, false);
-
-    if (results.length > 0) {
-      renderHero(results[0]);
-    }
-  } catch (error) {
-    const filtered = DEMO_ITEMS.filter(i => 
-      (i.title && i.title.toLowerCase().includes(clean.toLowerCase())) ||
-      (i.name && i.name.toLowerCase().includes(clean.toLowerCase()))
+  if (dom.searchStatusText) {
+    dom.searchStatusText.replaceChildren(
+      makeIcon('fa-solid fa-compass'),
+      document.createTextNode(' Ingresa un tÃ©rmino para comenzar a buscar')
     );
-    dom.resultsCount.textContent = `${filtered.length} título(s) locales`;
-    renderMediaGrid(filtered, false);
   }
-}
-
-// ============================================================================
-// 10. GESTIÓN DEL MENÚ LATERAL (ABRE POR BOTÓN, CONTROL REMOTO O TOUCH)
-// ============================================================================
-
-function openSidebar() {
-  dom.rightSidebar.classList.add('is-open');
-  dom.sidebarOverlay.classList.remove('hidden');
-
-  // Mover foco automáticamente al primer elemento en el sidebar
-  setTimeout(() => {
-    const firstBtn = dom.rightSidebar.querySelector('.sidebar-nav-btn') || dom.configMenuBtn;
-    focusAndCenter(firstBtn);
-  }, 100);
-}
-
-function closeSidebar() {
-  dom.rightSidebar.classList.remove('is-open');
-  dom.sidebarOverlay.classList.add('hidden');
-}
-
-function toggleSidebar() {
-  if (dom.rightSidebar.classList.contains('is-open')) {
-    closeSidebar();
-  } else {
-    openSidebar();
-  }
-}
-
-// ============================================================================
-// 10.B GESTIÓN DEL MODAL DEDICADO DE BÚSQUEDA (SMART TV & MÓVILES)
-// ============================================================================
-
-function getSearchGridColumnsCount() {
-  if (!dom.searchResultsGrid) return 1;
-  const cards = Array.from(dom.searchResultsGrid.querySelectorAll('.media-card'));
-  if (cards.length < 2) return 1;
-  const firstTop = cards[0].offsetTop;
-  let count = 0;
-  for (const c of cards) {
-    if (Math.abs(c.offsetTop - firstTop) < 12) count++;
-    else break;
-  }
-  return Math.max(1, count);
+  toggleHidden(dom.searchModalLoader, true);
+  toggleHidden(dom.modalClearSearchBtn, true);
 }
 
 function openSearchModal() {
   closeSidebar();
   if (!dom.searchModal) return;
-  dom.searchModal.classList.remove('hidden');
-  document.body.style.overflow = 'hidden';
-  state.lastFocusedElementBeforeModal = dom.headerSearchBtn;
 
-  if (dom.modalSearchInput && !dom.modalSearchInput.value.trim()) {
+  toggleHidden(dom.searchModal, false);
+  syncScrollLock();
+  state.lastFocusedElement = dom.headerSearchBtn;
+
+  if (!dom.modalSearchInput.value.trim()) {
     renderSearchInitialState();
-  } else if (dom.modalClearSearchBtn && dom.modalSearchInput && dom.modalSearchInput.value.trim()) {
-    dom.modalClearSearchBtn.classList.remove('hidden');
+  } else {
+    toggleHidden(dom.modalClearSearchBtn, false);
   }
 
-  // Foco automático obligatorio para desplegar teclado en pantalla en Smart TV y celulares
+  // En TV y mÃ³vil esto ademÃ¡s despliega el teclado en pantalla.
   setTimeout(() => {
-    if (dom.modalSearchInput) {
-      dom.modalSearchInput.focus();
-      dom.modalSearchInput.select();
-    }
+    dom.modalSearchInput?.focus();
+    dom.modalSearchInput?.select();
   }, 80);
 }
 
 function closeSearchModal() {
   if (!dom.searchModal) return;
-  dom.searchModal.classList.add('hidden');
-  document.body.style.overflow = '';
-
-  if (dom.headerSearchBtn) {
-    focusAndCenter(dom.headerSearchBtn);
-  }
+  toggleHidden(dom.searchModal, true);
+  syncScrollLock();
+  if (dom.headerSearchBtn) focusAndCenter(dom.headerSearchBtn);
 }
 
-function renderSearchInitialState() {
-  if (!dom.searchResultsGrid) return;
-  dom.searchResultsGrid.innerHTML = `
-    <div class="search-empty-state">
-      <i class="fa-solid fa-magnifying-glass"></i>
-      <h3>Encuentra tus películas y series favoritas</h3>
-      <p>Escribe el nombre del título, saga, director o actor para ver resultados al instante.</p>
-    </div>
-  `;
-  if (dom.searchStatusText) {
-    dom.searchStatusText.innerHTML = '<i class="fa-solid fa-compass"></i> Ingresa un término para comenzar a buscar';
-  }
-  if (dom.searchModalLoader) {
-    dom.searchModalLoader.classList.add('hidden');
-  }
-  if (dom.modalClearSearchBtn) {
-    dom.modalClearSearchBtn.classList.add('hidden');
-  }
-}
-
+/** BÃºsqueda en el catÃ¡logo.
+ * @param {string} query
+ */
 async function performModalSearch(query) {
   const clean = (query || '').trim();
   if (!clean) {
@@ -1997,1013 +2033,693 @@ async function performModalSearch(query) {
     return;
   }
 
-  if (dom.modalClearSearchBtn) dom.modalClearSearchBtn.classList.remove('hidden');
-  if (dom.searchModalLoader) dom.searchModalLoader.classList.remove('hidden');
-  if (dom.searchStatusText) dom.searchStatusText.textContent = `Buscando "${clean}"...`;
+  const token = ++state.tokens.search;
+
+  toggleHidden(dom.modalClearSearchBtn, false);
+  toggleHidden(dom.searchModalLoader, false);
+  if (dom.searchStatusText) {
+    dom.searchStatusText.textContent = `Buscando â€œ${clean}â€â€¦`;
+  }
+
+  let results = [];
 
   try {
-    let results = [];
     if (CONFIG.getApiKey()) {
       const data = await searchMulti(clean, 1);
-      results = (data.results || []).filter(i => (i.media_type === 'movie' || i.media_type === 'tv') && (i.title || i.name));
+      results = (data.results || []).filter(
+        (i) => (i.media_type === 'movie' || i.media_type === 'tv') && (i.title || i.name)
+      );
     } else {
-      results = DEMO_ITEMS.filter(i =>
-        (i.title && i.title.toLowerCase().includes(clean.toLowerCase())) ||
-        (i.name && i.name.toLowerCase().includes(clean.toLowerCase()))
+      results = DEMO_ITEMS.filter((item) =>
+        item.title.toLowerCase().includes(clean.toLowerCase())
       );
     }
-
-    if (dom.searchModalLoader) dom.searchModalLoader.classList.add('hidden');
-
-    if (results.length === 0) {
-      if (dom.searchStatusText) dom.searchStatusText.textContent = `0 resultados para "${clean}"`;
-      if (dom.searchResultsGrid) {
-        dom.searchResultsGrid.innerHTML = `
-          <div class="search-empty-state">
-            <i class="fa-solid fa-film"></i>
-            <h3>No se encontraron títulos</h3>
-            <p>No hay coincidencias para "${clean}". Intenta con otro término o revisa la ortografía.</p>
-          </div>
-        `;
-      }
-      return;
-    }
-
-    if (dom.searchStatusText) dom.searchStatusText.textContent = `${results.length} título(s) encontrados para "${clean}"`;
-    if (dom.searchResultsGrid) {
-      dom.searchResultsGrid.innerHTML = '';
-      const fragment = document.createDocumentFragment();
-      results.forEach(item => {
-        fragment.appendChild(createSearchMediaCard(item));
-      });
-      dom.searchResultsGrid.appendChild(fragment);
-    }
-
   } catch (error) {
-    console.warn('[PelisFlix] Error al buscar en TMDb, usando catálogo de demostración:', error);
-    if (dom.searchModalLoader) dom.searchModalLoader.classList.add('hidden');
-
-    const filtered = DEMO_ITEMS.filter(i =>
-      (i.title && i.title.toLowerCase().includes(clean.toLowerCase())) ||
-      (i.name && i.name.toLowerCase().includes(clean.toLowerCase()))
+    console.warn('[Peloflix] BÃºsqueda en modo demostraciÃ³n:', error);
+    results = DEMO_ITEMS.filter((item) =>
+      item.title.toLowerCase().includes(clean.toLowerCase())
     );
-
-    if (dom.searchStatusText) dom.searchStatusText.textContent = `${filtered.length} título(s) locales para "${clean}"`;
-    if (dom.searchResultsGrid) {
-      dom.searchResultsGrid.innerHTML = '';
-      const fragment = document.createDocumentFragment();
-      filtered.forEach(item => {
-        fragment.appendChild(createSearchMediaCard(item));
-      });
-      dom.searchResultsGrid.appendChild(fragment);
-    }
   }
-}
 
-// ============================================================================
-// 10.C GESTIÓN DE CONFIGURACIÓN Y ACCESO POR PIN ("Pia26")
-// ============================================================================
+  // Una respuesta mÃ¡s reciente ya se pintÃ³: se descarta esta.
+  if (token !== state.tokens.search) return;
 
-function openPinModal() {
-  closeSidebar();
-  if (dom.pinInput) dom.pinInput.value = '';
-  if (dom.pinError) dom.pinError.classList.add('hidden');
-  dom.pinModal.classList.remove('hidden');
-  
-  // Auto-focus obligatorio para Smart TV (despliega teclado en pantalla) y celulares
-  setTimeout(() => {
-    if (dom.pinInput) {
-      dom.pinInput.focus();
-      dom.pinInput.select();
-    }
-  }, 100);
-}
+  toggleHidden(dom.searchModalLoader, true);
 
-function closePinModal() {
-  dom.pinModal.classList.add('hidden');
-  if (dom.pinInput) dom.pinInput.value = '';
-  if (dom.pinError) dom.pinError.classList.add('hidden');
-  if (dom.configMenuBtn) {
-    focusAndCenter(dom.configMenuBtn);
+  if (dom.searchStatusText) {
+    const label = results.length === 1 ? 'tÃ­tulo' : 'tÃ­tulos';
+    dom.searchStatusText.textContent =
+      `${results.length} ${label} para â€œ${clean}â€`;
   }
-}
 
-function verifyPin() {
-  const entered = (dom.pinInput.value || '').trim();
-  if (entered === ADMIN_PIN) {
-    dom.pinError.classList.add('hidden');
-    dom.pinModal.classList.add('hidden');
-    if (dom.pinInput) dom.pinInput.value = '';
-    openSettingsModal();
-  } else {
-    dom.pinError.classList.remove('hidden');
-    if (dom.pinInput) {
-      dom.pinInput.value = '';
-      dom.pinInput.focus();
-    }
+  if (results.length === 0) {
+    renderEmptyState(dom.searchResultsGrid, {
+      icon: 'fa-solid fa-film',
+      title: 'Sin coincidencias',
+      text: `No encontramos nada para â€œ${clean}â€. Prueba con otro tÃ­tulo o revisa la ortografÃ­a.`
+    });
+    return;
   }
+
+  const fragment = document.createDocumentFragment();
+  results.forEach((item) => {
+    fragment.appendChild(createMediaCard(item, {
+      onSelect: () => {
+        const data = normalizeItem(item);
+        closeSearchModal();
+        state.lastFocusedElement = dom.headerSearchBtn;
+        openMediaModal(data.id, data.mediaType);
+      }
+    }));
+  });
+
+  dom.searchResultsGrid.replaceChildren(fragment);
 }
 
-function openSettingsModal() {
-  updateApiKeyStatus();
-  dom.settingsModal.classList.remove('hidden');
-  setTimeout(() => {
-    if (dom.apiKeyInput) {
-      dom.apiKeyInput.focus();
-      dom.apiKeyInput.select();
-    }
-  }, 100);
-}
+/* ==========================================================================
+ * 21. MOTOR DE NAVEGACIÃ“N D-PAD
+ * ========================================================================== */
 
-function closeSettingsModal() {
-  dom.settingsModal.classList.add('hidden');
-  if (dom.configMenuBtn) {
-    focusAndCenter(dom.configMenuBtn);
-  }
-}
+/**
+ * CuÃ¡ntas tarjetas comparten la misma fila visual.
+ * DEBE consultarse sobre el contenedor real: contar sobre todo el documento
+ * mezcla la grilla del catÃ¡logo con la del buscador y devuelve un nÃºmero
+ * de columnas que no corresponde.
+ * @param {ParentNode} container
+ * @param {string} selector
+ * @returns {number}
+ */
+function getColumnsIn(container, selector) {
+  if (!container) return 1;
+  const items = Array.from(container.querySelectorAll(selector));
+  if (items.length < 2) return 1;
 
-// ============================================================================
-// 11. MOTOR DE NAVEGACIÓN D-PAD ESPACIAL (SMART TV: TIZEN / WEBOS / ANDROID TV)
-// ============================================================================
-
-function getGridColumnsCount() {
-  const cards = Array.from(document.querySelectorAll('.media-card, .live-channel-card'));
-  if (cards.length < 2) return 1;
-  const firstTop = cards[0].offsetTop;
+  const firstTop = items[0].getBoundingClientRect().top;
   let count = 0;
-  for (const c of cards) {
-    if (Math.abs(c.offsetTop - firstTop) < 10) count++;
+  for (const item of items) {
+    if (Math.abs(item.getBoundingClientRect().top - firstTop) < 12) count++;
     else break;
   }
   return Math.max(1, count);
 }
 
-function handleDpadNavigation(e) {
-  const isDpadKey = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key);
-  const isBackKey = e.key === 'Escape' || e.key === 'Backspace' || e.keyCode === 10009 || e.keyCode === 461;
+/**
+ * Elementos enfocada actualmente dentro de un contenedor.
+ * @param {ParentNode} container
+ * @returns {HTMLElement[]}
+ */
+function getFocusables(container) {
+  if (!container) return [];
+  return Array.from(
+    container.querySelectorAll('button, [href], input, select, [tabindex]:not([tabindex="-1"])')
+  ).filter(isVisible);
+}
 
-  // 1. MANEJO DEL BOTÓN VOLVER / ATRÁS EN SMART TV Y PANTALLA COMPLETA
-  if (isBackKey) {
-    // Si el foco está dentro de un input de texto, permitir que Backspace borre caracteres
-    if (e.target.tagName === 'INPUT' && e.key === 'Backspace') {
-      return;
-    }
+/**
+ * Tecla "Volver" de Smart TV (10009 en Tizen/WebOS) y Escape.
+ * @param {KeyboardEvent} e
+ * @returns {boolean} true si se gestionÃ³
+ */
+function handleBackKey(e) {
+  // Dentro de un campo de texto, Backspace debe borrar.
+  if (e.key === 'Backspace' && e.target.tagName === 'INPUT') return false;
 
-    e.preventDefault();
-
-    // Si el modal de búsqueda está abierto -> Cerrar modal de búsqueda
-    if (dom.searchModal && !dom.searchModal.classList.contains('hidden')) {
-      closeSearchModal();
-      return;
-    }
-
-    // Si el modal de PIN está abierto -> Cerrar modal de PIN
-    if (dom.pinModal && !dom.pinModal.classList.contains('hidden')) {
-      closePinModal();
-      return;
-    }
-
-    // Si el modal de Ajustes está abierto -> Cerrar modal de Ajustes
-    if (dom.settingsModal && !dom.settingsModal.classList.contains('hidden')) {
-      closeSettingsModal();
-      return;
-    }
-
-    // Si el reproductor de video está activo (en pantalla completa o en modal), detenerlo y salir
-    if (!dom.modalPlayerSection.classList.contains('hidden')) {
-      stopAndClearPlayer();
-      focusAndCenter(dom.modalPlayBtn);
-      return;
-    }
-
-    // Si el modal de detalles está abierto -> Cerrar modal
-    if (!dom.mediaModal.classList.contains('hidden')) {
-      closeMediaModal();
-      return;
-    }
-
-    // Si el menú lateral está abierto -> Cerrar menú lateral y volver a botón de menú
-    if (dom.rightSidebar.classList.contains('is-open')) {
-      closeSidebar();
-      focusAndCenter(dom.sidebarToggleBtn);
-      return;
-    }
+  // De arriba (mÃ¡s superficial) hacia abajo: bÃºsqueda â†’ detalle/reproductor.
+  if (dom.searchModal && !dom.searchModal.classList.contains('hidden')) {
+    closeSearchModal();
+    return true;
   }
 
-  // Si el reproductor de video está activo, cualquier tecla reinicia el temporizador de controles
+  if (dom.mediaModal && !dom.mediaModal.classList.contains('hidden')) {
+    if (isPlayerActive()) {
+      stopAndClearPlayer();
+      focusAndCenter(dom.modalPlayBtn);
+    } else {
+      closeMediaModal();
+    }
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * NavegaciÃ³n espacial con el mando / teclado.
+ * @param {KeyboardEvent} e
+ */
+function handleDpadNavigation(e) {
+  const active = document.activeElement;
+
+  const isDpadKey = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key);
+  const isBackKey = e.key === 'Escape' || e.key === 'Backspace' ||
+    e.keyCode === 10009 || e.keyCode === 461;
+
+  // 1. Volver / Escape
+  if (isBackKey) {
+    if (handleBackKey(e)) e.preventDefault();
+    return;
+  }
+
+  // 2. Con el reproductor activo cualquier tecla revive los controles.
   if (isPlayerActive()) {
     resetPlayerControlsTimer();
 
-    if (isDpadKey) {
-      e.preventDefault();
-      const playerControls = [dom.serverSelect, dom.quickSwitchServerBtn, dom.playerCloseViewBtn].filter(Boolean);
-      const idx = playerControls.indexOf(active);
+    if (!isDpadKey) return;
+    e.preventDefault();
 
-      if (idx === -1) {
-        focusAndCenter(dom.serverSelect || dom.playerCloseViewBtn);
-      } else {
-        if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
-          const next = playerControls[idx + 1] || playerControls[0];
-          focusAndCenter(next);
-        } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-          const prev = playerControls[idx - 1] || playerControls[playerControls.length - 1];
-          focusAndCenter(prev);
-        }
-      }
-      return;
+    // Solo controles realmente visibles (en IPTV el selector estÃ¡ oculto).
+    const controls = getFocusables(dom.playerTopBar);
+    const index = controls.indexOf(active);
+
+    if (index === -1) {
+      focusAndCenter(controls[0]);
+    } else if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+      focusAndCenter(controls[index + 1] || controls[0]);
+    } else {
+      focusAndCenter(controls[index - 1] || controls[controls.length - 1]);
     }
+    return;
   }
 
-  // Si no es tecla de dirección, continuar
   if (!isDpadKey) return;
 
-  const active = document.activeElement;
+  // 3. Dentro de un modal: recorrido lineal de sus controles.
+  const openModal = [dom.searchModal]
+    .find((m) => m && !m.classList.contains('hidden'));
 
-  // 1.A NAVEGACIÓN DENTRO DEL MODAL DE BÚSQUEDA
-  if (dom.searchModal && !dom.searchModal.classList.contains('hidden')) {
-    // Foco en el input de búsqueda
-    if (active === dom.modalSearchInput) {
-      if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        const firstCard = dom.searchResultsGrid.querySelector('.media-card');
-        if (firstCard) {
-          focusAndCenter(firstCard);
-        } else if (dom.modalClearSearchBtn && !dom.modalClearSearchBtn.classList.contains('hidden')) {
-          focusAndCenter(dom.modalClearSearchBtn);
-        } else if (dom.searchModalCloseBtn) {
-          focusAndCenter(dom.searchModalCloseBtn);
-        }
-      } else if (e.key === 'ArrowRight' && dom.modalSearchInput.selectionStart === dom.modalSearchInput.value.length) {
-        if (dom.modalClearSearchBtn && !dom.modalClearSearchBtn.classList.contains('hidden')) {
-          e.preventDefault();
-          focusAndCenter(dom.modalClearSearchBtn);
-        } else if (dom.searchModalCloseBtn) {
-          e.preventDefault();
-          focusAndCenter(dom.searchModalCloseBtn);
-        }
-      }
-      return;
-    }
-
-    // Foco en el botón de limpiar texto
-    if (active === dom.modalClearSearchBtn) {
-      e.preventDefault();
-      if (e.key === 'ArrowLeft') focusAndCenter(dom.modalSearchInput);
-      else if (e.key === 'ArrowRight') focusAndCenter(dom.searchModalCloseBtn);
-      else if (e.key === 'ArrowDown') {
-        const firstCard = dom.searchResultsGrid.querySelector('.media-card');
-        if (firstCard) focusAndCenter(firstCard);
-      }
-      return;
-    }
-
-    // Foco en el botón de cerrar modal de búsqueda
-    if (active === dom.searchModalCloseBtn) {
-      e.preventDefault();
-      if (e.key === 'ArrowLeft') {
-        if (dom.modalClearSearchBtn && !dom.modalClearSearchBtn.classList.contains('hidden')) {
-          focusAndCenter(dom.modalClearSearchBtn);
-        } else {
-          focusAndCenter(dom.modalSearchInput);
-        }
-      } else if (e.key === 'ArrowDown') {
-        const firstCard = dom.searchResultsGrid.querySelector('.media-card');
-        if (firstCard) focusAndCenter(firstCard);
-      }
-      return;
-    }
-
-    // Foco en una tarjeta dentro de la grilla de resultados del modal
-    const searchCards = Array.from(dom.searchResultsGrid.querySelectorAll('.media-card'));
-    const scIndex = searchCards.indexOf(active);
-    if (scIndex !== -1) {
-      e.preventDefault();
-      const cols = getSearchGridColumnsCount();
-
-      if (e.key === 'ArrowRight') {
-        if (scIndex + 1 < searchCards.length) {
-          focusAndCenter(searchCards[scIndex + 1]);
-        }
-      } else if (e.key === 'ArrowLeft') {
-        if (scIndex > 0) {
-          focusAndCenter(searchCards[scIndex - 1]);
-        }
-      } else if (e.key === 'ArrowDown') {
-        if (scIndex + cols < searchCards.length) {
-          focusAndCenter(searchCards[scIndex + cols]);
-        }
-      } else if (e.key === 'ArrowUp') {
-        if (scIndex - cols >= 0) {
-          focusAndCenter(searchCards[scIndex - cols]);
-        } else {
-          // Subir al input de búsqueda desde la primera fila
-          focusAndCenter(dom.modalSearchInput);
-        }
-      }
-      return;
-    }
-  }
-
-  // 1.B NAVEGACIÓN DENTRO DEL MODAL DE PIN
-  if (dom.pinModal && !dom.pinModal.classList.contains('hidden')) {
+  if (openModal) {
     e.preventDefault();
-    const pinFocusables = Array.from(dom.pinModal.querySelectorAll('input, button, [tabindex="0"]'))
-      .filter(el => !el.classList.contains('hidden') && el.offsetParent !== null);
-    const currentIndex = pinFocusables.indexOf(active);
-    if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
-      const next = pinFocusables[currentIndex + 1] || pinFocusables[0];
-      focusAndCenter(next);
-    } else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
-      const prev = pinFocusables[currentIndex - 1] || pinFocusables[pinFocusables.length - 1];
-      focusAndCenter(prev);
+
+    // Atajo: desde el input de bÃºsqueda, "abajo" entra a la primera tarjeta.
+    if (active === dom.modalSearchInput && e.key === 'ArrowDown') {
+      const firstCard = dom.searchResultsGrid?.querySelector('.media-card');
+      focusAndCenter(firstCard || getFocusables(openModal)[0]);
+      return;
+    }
+
+    const focusables = getFocusables(openModal);
+    const index = focusables.indexOf(active);
+
+    if (index === -1) {
+      focusAndCenter(focusables[0]);
+    } else if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
+      focusAndCenter(focusables[index + 1] || focusables[0]);
+    } else {
+      focusAndCenter(focusables[index - 1] || focusables[focusables.length - 1]);
     }
     return;
   }
 
-  // 1.C NAVEGACIÓN DENTRO DEL MODAL DE AJUSTES
-  if (dom.settingsModal && !dom.settingsModal.classList.contains('hidden')) {
+  // 4. Modal de detalle. Si el reproductor estÃ¡ activo ya se ha resuelto
+  //    arriba, asÃ­ que aquÃ­ solo hay controles de ficha y episodios.
+  if (dom.mediaModal && !dom.mediaModal.classList.contains('hidden')) {
     e.preventDefault();
-    const settingsFocusables = Array.from(dom.settingsModal.querySelectorAll('input, button, [tabindex="0"]'))
-      .filter(el => !el.classList.contains('hidden') && el.offsetParent !== null);
-    const currentIndex = settingsFocusables.indexOf(active);
-    if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
-      const next = settingsFocusables[currentIndex + 1] || settingsFocusables[0];
-      focusAndCenter(next);
-    } else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
-      const prev = settingsFocusables[currentIndex - 1] || settingsFocusables[settingsFocusables.length - 1];
-      focusAndCenter(prev);
+    const focusables = getFocusables(dom.mediaModal);
+    const index = focusables.indexOf(active);
+
+    if (index === -1) {
+      focusAndCenter(focusables[0]);
+    } else if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
+      focusAndCenter(focusables[index + 1] || focusables[0]);
+    } else {
+      focusAndCenter(focusables[index - 1] || focusables[focusables.length - 1]);
     }
     return;
   }
 
-  // 2. NAVEGACIÓN DENTRO DEL MODAL FLOTANTE
-  if (!dom.mediaModal.classList.contains('hidden')) {
-    e.preventDefault();
-    const modalFocusables = Array.from(dom.mediaModal.querySelectorAll('button, select, [tabindex="0"]'))
-      .filter(el => !el.classList.contains('hidden') && el.offsetParent !== null);
-
-    const currentIndex = modalFocusables.indexOf(active);
-
-    if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
-      const next = modalFocusables[currentIndex + 1] || modalFocusables[0];
-      focusAndCenter(next);
-    } else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
-      const prev = modalFocusables[currentIndex - 1] || modalFocusables[modalFocusables.length - 1];
-      focusAndCenter(prev);
-    }
-    return;
-  }
-
-  // 3. NAVEGACIÓN DENTRO DEL PANEL LATERAL
-  if (dom.rightSidebar.classList.contains('is-open')) {
-    e.preventDefault();
-    const sidebarFocusables = Array.from(dom.rightSidebar.querySelectorAll('button, input, [tabindex="0"]'))
-      .filter(el => !el.classList.contains('hidden') && el.offsetParent !== null);
-
-    const currentIndex = sidebarFocusables.indexOf(active);
-
-    if (e.key === 'ArrowDown') {
-      const next = sidebarFocusables[currentIndex + 1] || sidebarFocusables[0];
-      focusAndCenter(next);
-    } else if (e.key === 'ArrowUp') {
-      const prev = sidebarFocusables[currentIndex - 1] || sidebarFocusables[sidebarFocusables.length - 1];
-      focusAndCenter(prev);
-    } else if (e.key === 'ArrowLeft') {
-      // Salir del menú lateral hacia el contenido principal
-      closeSidebar();
-      focusAndCenter(dom.sidebarToggleBtn);
-    }
-    return;
-  }
-
-  // 4. NAVEGACIÓN ESPACIAL EN LA PANTALLA PRINCIPAL
-
-  // 4.A NAVEGACIÓN EN LAS FILAS HORIZONTALES (LAYOUT NETFLIX)
+  // 6. Carruseles horizontales: izquierda/derecha dentro de la fila,
+  //    arriba/abajo saltan de fila en fila.
   if (active && active.classList.contains('row-card')) {
     e.preventDefault();
-    const parentRow = active.closest('.row-scroll');
-    if (!parentRow) return;
-    const rowCards = Array.from(parentRow.querySelectorAll('.row-card'));
-    const idx = rowCards.indexOf(active);
+    const row = active.closest('.row-scroll');
+    if (!row) return;
+
+    const cards = Array.from(row.querySelectorAll('.row-card'));
+    const index = cards.indexOf(active);
+    const rows = Array.from(dom.homeRowsContainer.querySelectorAll('.row-scroll'));
+    const rowIndex = rows.indexOf(row);
 
     if (e.key === 'ArrowRight') {
-      if (idx + 1 < rowCards.length) focusAndCenter(rowCards[idx + 1]);
+      if (index + 1 < cards.length) focusAndCenter(cards[index + 1]);
     } else if (e.key === 'ArrowLeft') {
-      if (idx > 0) focusAndCenter(rowCards[idx - 1]);
+      if (index > 0) focusAndCenter(cards[index - 1]);
     } else if (e.key === 'ArrowDown') {
-      // Saltar a la siguiente fila
-      const allRowScrolls = Array.from(document.querySelectorAll('.row-scroll'));
-      const rowIdx = allRowScrolls.indexOf(parentRow);
-      if (rowIdx + 1 < allRowScrolls.length) {
-        const nextRow = allRowScrolls[rowIdx + 1];
-        const firstCard = nextRow.querySelector('.row-card');
-        if (firstCard) focusAndCenter(firstCard);
-      } else {
-        // Última fila: ir al botón "Ver Todas las Categorías"
-        if (dom.exploreAllBtn) focusAndCenter(dom.exploreAllBtn);
-      }
-    } else if (e.key === 'ArrowUp') {
-      // Saltar a la fila anterior
-      const allRowScrolls = Array.from(document.querySelectorAll('.row-scroll'));
-      const rowIdx = allRowScrolls.indexOf(parentRow);
-      if (rowIdx > 0) {
-        const prevRow = allRowScrolls[rowIdx - 1];
-        const firstCard = prevRow.querySelector('.row-card');
-        if (firstCard) focusAndCenter(firstCard);
-      } else {
-        // Primera fila: ir al Hero Banner
-        focusAndCenter(dom.heroPlayBtn);
-      }
+      const nextRow = rows[rowIndex + 1];
+      if (nextRow) focusAndCenter(nextRow.querySelector('.row-card'));
+      else if (dom.exploreAllBtn) focusAndCenter(dom.exploreAllBtn);
+    } else if (rowIndex > 0) {
+      focusAndCenter(rows[rowIndex - 1].querySelector('.row-card'));
+    } else {
+      focusAndCenter(dom.heroPlayBtn); // primera fila â†’ hero
     }
     return;
   }
 
-  // 4.B NAVEGACIÓN EN EL BOTÓN "VER TODAS LAS CATEGORÍAS"
   if (active === dom.exploreAllBtn) {
-    e.preventDefault();
     if (e.key === 'ArrowUp') {
-      const allRowScrolls = Array.from(document.querySelectorAll('.row-scroll'));
-      if (allRowScrolls.length > 0) {
-        const lastRow = allRowScrolls[allRowScrolls.length - 1];
-        const firstCard = lastRow.querySelector('.row-card');
-        if (firstCard) focusAndCenter(firstCard);
-      }
+      e.preventDefault();
+      const rows = Array.from(dom.homeRowsContainer.querySelectorAll('.row-scroll'));
+      focusAndCenter(rows[rows.length - 1]?.querySelector('.row-card'));
     }
     return;
   }
 
-  // 4.C NAVEGACIÓN EN BOTONES DE GÉNERO (EXPLORADOR)
+  // 7. Explorador de gÃ©neros (fila de botones + grilla).
   if (active && active.classList.contains('genre-filter-btn')) {
     e.preventDefault();
-    const genreBtns = Array.from(dom.genreBtnGrid.querySelectorAll('.genre-filter-btn'));
-    const gIdx = genreBtns.indexOf(active);
+    const btns = Array.from(dom.genreBtnGrid.querySelectorAll('.genre-filter-btn'));
+    const index = btns.indexOf(active);
+
     if (e.key === 'ArrowRight') {
-      if (gIdx + 1 < genreBtns.length) focusAndCenter(genreBtns[gIdx + 1]);
+      if (index + 1 < btns.length) focusAndCenter(btns[index + 1]);
     } else if (e.key === 'ArrowLeft') {
-      if (gIdx > 0) focusAndCenter(genreBtns[gIdx - 1]);
+      if (index > 0) focusAndCenter(btns[index - 1]);
     } else if (e.key === 'ArrowDown') {
-      // Ir a la grilla del explorador
-      const firstExploreCard = dom.exploreGrid ? dom.exploreGrid.querySelector('.media-card') : null;
-      if (firstExploreCard) focusAndCenter(firstExploreCard);
-    } else if (e.key === 'ArrowUp') {
-      if (dom.explorerBackBtn) focusAndCenter(dom.explorerBackBtn);
+      focusAndCenter(dom.exploreGrid?.querySelector('.media-card') || dom.explorerBackBtn);
+    } else if (dom.explorerBackBtn) {
+      focusAndCenter(dom.explorerBackBtn);
     }
     return;
   }
 
-  // 4.D NAVEGACIÓN EN LA GRILLA DEL EXPLORADOR
-  if (dom.exploreGrid && dom.exploreGrid.contains(active) && active.classList.contains('media-card')) {
+  // 8. Grillas: navegaciÃ³n por columnas reales del contenedor.
+  const gridContext = [
+    { grid: dom.exploreGrid, item: '.media-card', up: dom.genreBtnGrid?.querySelector('.genre-filter-btn'), more: dom.exploreLoadMoreBtn },
+    { grid: dom.mediaGrid, item: '.media-card, .live-channel-card', up: dom.heroPlayBtn, more: dom.loadMoreBtn }
+  ].find((ctx) => ctx.grid && ctx.grid.contains(active));
+
+  if (gridContext) {
     e.preventDefault();
-    const exploreCards = Array.from(dom.exploreGrid.querySelectorAll('.media-card'));
-    const eIdx = exploreCards.indexOf(active);
-    const eCols = getGridColumnsCount();
+    const cards = Array.from(gridContext.grid.querySelectorAll(gridContext.item));
+    const index = cards.indexOf(active);
+    const cols = getColumnsIn(gridContext.grid, gridContext.item);
+
     if (e.key === 'ArrowRight') {
-      if (eIdx + 1 < exploreCards.length) focusAndCenter(exploreCards[eIdx + 1]);
+      if (index + 1 < cards.length) focusAndCenter(cards[index + 1]);
     } else if (e.key === 'ArrowLeft') {
-      if (eIdx > 0) focusAndCenter(exploreCards[eIdx - 1]);
+      if (index > 0) focusAndCenter(cards[index - 1]);
     } else if (e.key === 'ArrowDown') {
-      if (eIdx + eCols < exploreCards.length) focusAndCenter(exploreCards[eIdx + eCols]);
-      else if (dom.exploreLoadMoreBtn && !dom.exploreLoadMoreBtn.classList.contains('hidden')) focusAndCenter(dom.exploreLoadMoreBtn);
-    } else if (e.key === 'ArrowUp') {
-      if (eIdx - eCols >= 0) focusAndCenter(exploreCards[eIdx - eCols]);
-      else {
-        const firstGenreBtn = dom.genreBtnGrid ? dom.genreBtnGrid.querySelector('.genre-filter-btn') : null;
-        if (firstGenreBtn) focusAndCenter(firstGenreBtn);
-      }
+      if (index + cols < cards.length) focusAndCenter(cards[index + cols]);
+      else if (gridContext.more && isVisible(gridContext.more)) focusAndCenter(gridContext.more);
+    } else if (index - cols >= 0) {
+      focusAndCenter(cards[index - cols]);
+    } else if (gridContext.up) {
+      focusAndCenter(gridContext.up);
     }
     return;
   }
 
-  // 4.E NAVEGACIÓN EN LA GRILLA DE CATÁLOGO (SERIES, ANIME, CARTOONS, BÚSQUEDA)
-  const cards = Array.from(document.querySelectorAll('#catalog-section .media-card, #catalog-section .live-channel-card'));
-  const cardIndex = cards.indexOf(active);
-
-  // A. Si estamos navegando en la grilla de tarjetas
-  if (cardIndex !== -1) {
-    e.preventDefault();
-    const cols = getGridColumnsCount();
-
-    if (e.key === 'ArrowRight') {
-      if (cardIndex + 1 < cards.length) {
-        focusAndCenter(cards[cardIndex + 1]);
-      }
-    } else if (e.key === 'ArrowLeft') {
-      if (cardIndex > 0) {
-        focusAndCenter(cards[cardIndex - 1]);
-      }
-    } else if (e.key === 'ArrowDown') {
-      if (cardIndex + cols < cards.length) {
-        focusAndCenter(cards[cardIndex + cols]);
-      } else if (!dom.loadMoreBtn.classList.contains('hidden')) {
-        focusAndCenter(dom.loadMoreBtn);
-      }
-    } else if (e.key === 'ArrowUp') {
-      if (cardIndex - cols >= 0) {
-        focusAndCenter(cards[cardIndex - cols]);
-      } else {
-        // Subir al Hero Banner
-        focusAndCenter(dom.heroPlayBtn);
-      }
-    }
-    return;
-  }
-
-  // B.0 Si estamos en la Barra de Pestañas (Sub-Navbar)
-  const navTabs = Array.from(dom.navTabButtons || []);
-  const tabIndex = navTabs.indexOf(active);
+  // 9. Barra de pestaÃ±as de categorÃ­a.
+  const tabs = Array.from(dom.navTabButtons);
+  const tabIndex = tabs.indexOf(active);
 
   if (tabIndex !== -1) {
     e.preventDefault();
-    if (e.key === 'ArrowRight') {
-      const next = navTabs[tabIndex + 1] || navTabs[0];
-      focusAndCenter(next);
-    } else if (e.key === 'ArrowLeft') {
-      const prev = navTabs[tabIndex - 1] || navTabs[navTabs.length - 1];
-      focusAndCenter(prev);
-    } else if (e.key === 'ArrowUp') {
-      focusAndCenter(dom.brandLogo || dom.headerSearchBtn);
+    if (e.key === 'ArrowRight') focusAndCenter(tabs[tabIndex + 1] || tabs[0]);
+    else if (e.key === 'ArrowLeft') focusAndCenter(tabs[tabIndex - 1] || tabs[tabs.length - 1]);
+    else if (e.key === 'ArrowDown') focusAndCenter(dom.heroPlayBtn);
+    else focusAndCenter(dom.brandLogo);
+    return;
+  }
+
+  // 10. Cabecera: logo â†’ buscar â†’ ajustes.
+  const headerChain = [dom.brandLogo, dom.headerSearchBtn, dom.headerSettingsBtn].filter(Boolean);
+  const headerIndex = headerChain.indexOf(active);
+
+  if (headerIndex !== -1) {
+    e.preventDefault();
+
+    if (e.key === 'ArrowLeft' && headerIndex > 0) {
+      focusAndCenter(headerChain[headerIndex - 1]);
+    } else if (e.key === 'ArrowRight' && headerIndex + 1 < headerChain.length) {
+      focusAndCenter(headerChain[headerIndex + 1]);
     } else if (e.key === 'ArrowDown') {
-      if (dom.heroPlayBtn && dom.heroPlayBtn.offsetParent !== null) {
-        focusAndCenter(dom.heroPlayBtn);
-      } else if (cards.length > 0) {
-        focusAndCenter(cards[0]);
-      }
+      const activeTab = document.querySelector('.nav-tab-btn.active') || tabs[0];
+      focusAndCenter(activeTab || dom.heroPlayBtn);
     }
     return;
   }
 
-  // B. Si estamos en el Hero Banner
-  if (active === dom.heroPlayBtn) {
+  // 11. Hero.
+  if (active === dom.heroPlayBtn || active === dom.heroInfoBtn) {
     e.preventDefault();
-    if (e.key === 'ArrowRight') focusAndCenter(dom.heroInfoBtn);
-    else if (e.key === 'ArrowDown') {
-      // En layout Netflix → ir a la primera fila
-      const firstRowCard = dom.homeRowsContainer && !dom.homeRowsContainer.classList.contains('hidden')
-        ? document.querySelector('.row-scroll .row-card')
-        : null;
-      if (firstRowCard) focusAndCenter(firstRowCard);
-      else if (cards.length > 0) focusAndCenter(cards[0]);
-    }
+    const isPlay = active === dom.heroPlayBtn;
+
+    if (e.key === 'ArrowRight' && isPlay) focusAndCenter(dom.heroInfoBtn);
+    else if (e.key === 'ArrowLeft' && !isPlay) focusAndCenter(dom.heroPlayBtn);
     else if (e.key === 'ArrowUp') {
-      const activeTab = document.querySelector('.nav-tab-btn.active') || (dom.navTabButtons && dom.navTabButtons[0]);
+      const activeTab = document.querySelector('.nav-tab-btn.active') || tabs[0];
       focusAndCenter(activeTab || dom.headerSearchBtn);
+    } else if (e.key === 'ArrowDown') {
+      const firstRowCard = document.querySelector('.row-scroll .row-card');
+      const firstCard = dom.mediaGrid?.querySelector('.media-card');
+      focusAndCenter(firstRowCard || firstCard || dom.exploreAllBtn);
     }
     return;
   }
 
-  if (active === dom.heroInfoBtn) {
-    e.preventDefault();
-    if (e.key === 'ArrowLeft') focusAndCenter(dom.heroPlayBtn);
-    else if (e.key === 'ArrowDown') {
-      const firstRowCard = dom.homeRowsContainer && !dom.homeRowsContainer.classList.contains('hidden')
-        ? document.querySelector('.row-scroll .row-card')
-        : null;
-      if (firstRowCard) focusAndCenter(firstRowCard);
-      else if (cards.length > 0) focusAndCenter(cards[0]);
-    }
-    else if (e.key === 'ArrowUp') {
-      const activeTab = document.querySelector('.nav-tab-btn.active') || (dom.navTabButtons && dom.navTabButtons[0]);
-      focusAndCenter(activeTab || dom.headerSearchBtn);
-    }
-    return;
-  }
-
-  // C. Si estamos en el Header
-  if (active === dom.sidebarToggleBtn) {
-    e.preventDefault();
-    if (e.key === 'ArrowLeft') focusAndCenter(dom.headerSearchBtn || dom.brandLogo);
-    else if (e.key === 'ArrowDown') {
-      const activeTab = document.querySelector('.nav-tab-btn.active') || (dom.navTabButtons && dom.navTabButtons[0]);
-      focusAndCenter(activeTab || dom.heroPlayBtn);
-    }
-    return;
-  }
-
-  if (active === dom.headerSearchBtn) {
-    e.preventDefault();
-    if (e.key === 'ArrowLeft') focusAndCenter(dom.brandLogo);
-    else if (e.key === 'ArrowRight') focusAndCenter(dom.sidebarToggleBtn);
-    else if (e.key === 'ArrowDown') {
-      const activeTab = document.querySelector('.nav-tab-btn.active') || (dom.navTabButtons && dom.navTabButtons[0]);
-      focusAndCenter(activeTab || dom.heroPlayBtn);
-    }
-    return;
-  }
-
-  if (active === dom.brandLogo) {
-    e.preventDefault();
-    if (e.key === 'ArrowRight') focusAndCenter(dom.headerSearchBtn || dom.sidebarToggleBtn);
-    else if (e.key === 'ArrowDown') {
-      const activeTab = document.querySelector('.nav-tab-btn.active') || (dom.navTabButtons && dom.navTabButtons[0]);
-      focusAndCenter(activeTab || dom.heroPlayBtn);
-    }
-    return;
-  }
-
-  // D. Si estamos en el botón Cargar Más
-  if (active === dom.loadMoreBtn) {
-    if (e.key === 'ArrowUp' && cards.length > 0) {
+  if (active === dom.loadMoreBtn || active === dom.exploreLoadMoreBtn) {
+    if (e.key === 'ArrowUp') {
       e.preventDefault();
-      focusAndCenter(cards[cards.length - 1]);
+      const grid = active === dom.loadMoreBtn ? dom.mediaGrid : dom.exploreGrid;
+      const cards = grid?.querySelectorAll('.media-card, .live-channel-card');
+      if (cards?.length) focusAndCenter(cards[cards.length - 1]);
     }
-    return;
-  }
-
-  // E. Foco inicial por defecto si no hay nada enfocado
-  if (cards.length > 0) {
-    focusAndCenter(dom.heroPlayBtn);
   }
 }
 
-// ============================================================================
-// 12. EVENT LISTENERS
-// ============================================================================
+/* ==========================================================================
+ * 22. EVENT LISTENERS
+ * ========================================================================== */
+
+/** Conecta un botÃ³n que se activa con Enter o Espacio. */
+function onActivate(element, handler) {
+  if (!element) return;
+  element.addEventListener('click', handler);
+  element.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      handler(e);
+    }
+  });
+}
+
+/** Cierra un modal al pulsar fuera de Ã©l. */
+function closeOnBackdropClick(modal, close) {
+  if (!modal) return;
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) close();
+  });
+}
+
+/** LÃ³gica de auto-ocultado del header segÃºn direcciÃ³n del scroll. */
+function setupHeaderScrollBehavior() {
+  const COMPACT_THRESHOLD = 50;
+  const HIDE_THRESHOLD = 120;
+  const DELTA_THRESHOLD = 6;
+  const TOP_SLACK = 15;
+
+  let lastScrollY = Math.max(0, window.scrollY || 0);
+
+  const update = () => {
+    const scrollY = Math.max(0, window.scrollY || 0);
+    const delta = scrollY - lastScrollY;
+
+    if (scrollY <= TOP_SLACK) {
+      dom.header?.classList.remove('header-scrolled', 'header-hidden');
+      return;
+    }
+
+    const compact = scrollY > COMPACT_THRESHOLD;
+    dom.header?.classList.toggle('header-scrolled', compact);
+
+    if (compact) {
+      dom.header?.classList.remove('header-hidden');
+    } else {
+      dom.header?.classList.remove('header-hidden');
+    }
+
+    lastScrollY = scrollY;
+  };
+
+  window.addEventListener('scroll', update, { passive: true });
+  update();
+
+  // Si algo dentro del header recibe foco, el header debe verse.
+  dom.header?.addEventListener('focusin', () => {
+    dom.header.classList.remove('header-hidden');
+  });
+}
 
 function setupEventListeners() {
-  // Motor D-Pad para teclado y controles remotos Smart TV
+  /* --- NavegaciÃ³n global --- */
   window.addEventListener('keydown', handleDpadNavigation);
 
-  // Apertura y Cierre del Menú Lateral (Click / Touch / Enter)
-  dom.sidebarToggleBtn.addEventListener('click', toggleSidebar);
-  dom.sidebarEdgeTab.addEventListener('click', toggleSidebar);
-  dom.sidebarCloseBtn.addEventListener('click', closeSidebar);
-  dom.sidebarOverlay.addEventListener('click', closeSidebar);
-
-  // Clic en logo -> Cargar películas (Categoría Principal)
-  dom.brandLogo.addEventListener('click', (e) => {
+  /* --- Logo y pestaÃ±as --- */
+  dom.brandLogo?.addEventListener('click', (e) => {
     e.preventDefault();
     loadActiveTab('movie', 1);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   });
 
-  // Pestañas de Navegación Sub-Navbar (Películas, Series, Anime, Dibujos Animados)
-  dom.navTabButtons = document.querySelectorAll('.nav-tab-btn');
-  dom.navTabButtons.forEach(btn => {
+  dom.navTabButtons.forEach((btn) => {
     btn.addEventListener('click', (e) => {
       e.preventDefault();
       loadActiveTab(btn.dataset.category, 1);
     });
   });
 
-  // Acceso al Buscador desde el Menú Lateral
-  if (dom.sidebarSearchBtn) {
-    dom.sidebarSearchBtn.addEventListener('click', (e) => {
-      e.preventDefault();
-      closeSidebar();
-      openSearchModal();
-    });
-  }
+  /* --- Buscador --- */
+  // onActivate(dom.headerSearchBtn, openSearchModal);
+  onActivate(dom.searchModalCloseBtn, closeSearchModal);
+  closeOnBackdropClick(dom.searchModal, closeSearchModal);
 
-  // Modal de Búsqueda Dedicado (Acceso Header y Cierre)
-  if (dom.headerSearchBtn) {
-    dom.headerSearchBtn.addEventListener('click', openSearchModal);
-  }
+  const debouncedSearch = debounce((value) => performModalSearch(value), 350);
 
-  if (dom.searchModalCloseBtn) {
-    dom.searchModalCloseBtn.addEventListener('click', closeSearchModal);
-  }
+  dom.modalSearchInput?.addEventListener('input', (e) => {
+    const value = e.target.value;
+    toggleHidden(dom.modalClearSearchBtn, value.length === 0);
+    debouncedSearch(value);
+  });
 
-  if (dom.searchModal) {
-    dom.searchModal.addEventListener('click', (e) => {
-      if (e.target === dom.searchModal) closeSearchModal();
-    });
-  }
+  dom.modalSearchInput?.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    debouncedSearch.cancel(); // no esperar al debounce con Enter
+    const firstCard = dom.searchResultsGrid?.querySelector('.media-card');
+    if (firstCard) focusAndCenter(firstCard);
+    else performModalSearch(dom.modalSearchInput.value);
+  });
 
-  // Buscador dentro del modal con debounce
-  const debouncedModalSearch = debounce((q) => performModalSearch(q), 350);
+  onActivate(dom.modalClearSearchBtn, () => {
+    dom.modalSearchInput.value = '';
+    state.tokens.search++; // invalida la bÃºsqueda en vuelo
+    renderSearchInitialState();
+    dom.modalSearchInput.focus();
+  });
 
-  if (dom.modalSearchInput) {
-    dom.modalSearchInput.addEventListener('input', (e) => {
-      const val = e.target.value;
-      if (dom.modalClearSearchBtn) {
-        dom.modalClearSearchBtn.classList.toggle('hidden', val.length === 0);
-      }
-      debouncedModalSearch(val);
-    });
-
-    dom.modalSearchInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        const firstCard = dom.searchResultsGrid.querySelector('.media-card');
-        if (firstCard) {
-          focusAndCenter(firstCard);
-        } else {
-          performModalSearch(dom.modalSearchInput.value);
-        }
-      }
-    });
-  }
-
-  if (dom.modalClearSearchBtn) {
-    dom.modalClearSearchBtn.addEventListener('click', () => {
-      dom.modalSearchInput.value = '';
-      dom.modalClearSearchBtn.classList.add('hidden');
-      renderSearchInitialState();
-      dom.modalSearchInput.focus();
-    });
-  }
-
-  // Botón Cargar Más
-  dom.loadMoreBtn.addEventListener('click', () => {
+  /* --- PaginaciÃ³n --- */
+  onActivate(dom.loadMoreBtn, () => {
     if (state.currentPage < state.totalPages) {
       loadActiveTab(state.currentTab, state.currentPage + 1);
     }
   });
 
-  // Botón "Ver Todas las Categorías" → Explorador
-  if (dom.exploreAllBtn) {
-    dom.exploreAllBtn.addEventListener('click', () => {
-      showCategoryExplorer();
-    });
-  }
+  /* --- Explorador --- */
+  onActivate(dom.exploreAllBtn, showCategoryExplorer);
+  onActivate(dom.explorerBackBtn, hideCategoryExplorer);
 
-  // Botón "Volver al Inicio" del Explorador
-  if (dom.explorerBackBtn) {
-    dom.explorerBackBtn.addEventListener('click', () => {
-      hideCategoryExplorer();
-    });
-  }
+  onActivate(dom.exploreLoadMoreBtn, () => {
+    const { activeGenreId, currentPage, totalPages } = state.explorer;
+    if (!activeGenreId || currentPage >= totalPages) return;
 
-  // Botón "Cargar Más" del Explorador de Categorías
-  if (dom.exploreLoadMoreBtn) {
-    dom.exploreLoadMoreBtn.addEventListener('click', () => {
-      if (state.explorer.activeGenreId && state.explorer.currentPage < state.explorer.totalPages) {
-        const activeBtn = dom.genreBtnGrid.querySelector('.genre-filter-btn.active');
-        const genreName = activeBtn ? activeBtn.textContent.trim() : '';
-        loadGenreResults(state.explorer.activeGenreId, genreName, state.explorer.currentPage + 1);
-      }
-    });
-  }
-
-  // Guardar y Borrar API Key
-  dom.saveApiKeyBtn.addEventListener('click', () => {
-    const key = dom.apiKeyInput.value.trim();
-    if (key) {
-      localStorage.setItem('pelisflix_tmdb_api_key', key);
-      updateApiKeyStatus();
-      showToast('¡API Key guardada en PelisFlix!');
-      loadActiveTab(state.currentTab, 1);
-    } else {
-      showToast('Ingresa una API Key válida');
-    }
+    const activeBtn = dom.genreBtnGrid.querySelector('.genre-filter-btn.active');
+    const label = activeBtn ? activeBtn.textContent.trim() : '';
+    loadGenreResults(activeGenreId, label, currentPage + 1);
   });
 
-  dom.clearApiKeyBtn.addEventListener('click', () => {
-    localStorage.removeItem('pelisflix_tmdb_api_key');
-    updateApiKeyStatus();
-    showToast('API Key eliminada. Modo demo activo.');
-    loadActiveTab(state.currentTab, 1);
-  });
+  /* --- Modal de tÃ­tulo --- */
+  onActivate(dom.modalCloseBtn, closeMediaModal);
+  closeOnBackdropClick(dom.mediaModal, closeMediaModal);
 
-  // Selector de Servidores en el Reproductor
-  if (dom.serverSelect) {
-    dom.serverSelect.addEventListener('change', (e) => {
-      handleServerChange(e.target.value);
-    });
-  }
-
-  // Botón para cambiar rápidamente al siguiente servidor
-  if (dom.quickSwitchServerBtn) {
-    dom.quickSwitchServerBtn.addEventListener('click', () => {
-      cycleNextServer();
-    });
-  }
-
-  // Botón del buscador en el menú lateral
-  if (dom.sidebarSearchBtn) {
-    dom.sidebarSearchBtn.addEventListener('click', (e) => {
-      e.preventDefault();
-      closeSidebar();
-      openSearchModal();
-    });
-  }
-
-  // Botón Volver a detalles
-  dom.playerCloseViewBtn.addEventListener('click', () => {
+  /* --- Reproductor --- */
+  onActivate(dom.playerCloseViewBtn, () => {
     stopAndClearPlayer();
+    focusAndCenter(dom.modalPlayBtn);
   });
 
-  // Botones del Hero Banner
-  dom.heroPlayBtn.addEventListener('click', () => {
-    if (state.featuredHeroItem) {
-      state.lastFocusedElementBeforeModal = dom.heroPlayBtn;
-      if (state.currentTab === 'live' || state.featuredHeroItem.isLiveChannel) {
-        openLiveChannel(state.featuredHeroItem);
-        return;
-      }
-      const isMovie = state.featuredHeroItem.media_type === 'movie' || (!state.featuredHeroItem.media_type && state.featuredHeroItem.title);
-      openMediaModal(state.featuredHeroItem.id, isMovie ? 'movie' : 'tv', true);
-    }
+  dom.serverBtnGroup?.addEventListener('click', (e) => {
+    const btn = e.target.closest('.server-btn');
+    if (btn?.dataset.server) handleServerChange(btn.dataset.server);
   });
 
-  dom.heroInfoBtn.addEventListener('click', () => {
-    if (state.featuredHeroItem) {
-      state.lastFocusedElementBeforeModal = dom.heroInfoBtn;
-      if (state.currentTab === 'live' || state.featuredHeroItem.isLiveChannel) {
-        openLiveChannel(state.featuredHeroItem);
-        return;
-      }
-      const isMovie = state.featuredHeroItem.media_type === 'movie' || (!state.featuredHeroItem.media_type && state.featuredHeroItem.title);
-      openMediaModal(state.featuredHeroItem.id, isMovie ? 'movie' : 'tv', false);
-    }
+  dom.serverBtnGroup?.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const btn = e.target.closest('.server-btn');
+    if (!btn?.dataset.server) return;
+    e.preventDefault();
+    handleServerChange(btn.dataset.server);
   });
 
-  // Botón Reproducir Ahora en el modal
-  dom.modalPlayBtn.addEventListener('click', () => {
-    if (state.activeItemDetails) {
-      const isMovie = state.activeItemDetails.media_type === 'movie';
-      const title = dom.modalTitle.textContent;
-      if (isMovie) {
-        startPlayback({ type: 'movie', id: state.activeItemDetails.id, title: `Película: ${title}` });
-      } else {
-        startPlayback({
-          type: 'tv',
-          id: state.activeItemDetails.id,
-          season: state.activeSeason || 1,
-          episode: 1,
-          title: `${title} - Temporada ${state.activeSeason || 1} Episodio 1`
-        });
-      }
-    }
-  });
+  onActivate(dom.quickSwitchServerBtn, cycleNextServer);
 
-  // Cerrar Modal
-  dom.modalCloseBtn.addEventListener('click', closeMediaModal);
+  /* --- Hero --- */
+  const openFromHero = (autoPlay) => {
+    const item = state.featuredHeroItem;
+    if (!item) return;
 
-  dom.mediaModal.addEventListener('click', (e) => {
-    if (e.target === dom.mediaModal) closeMediaModal();
-  });
+    state.lastFocusedElement = autoPlay ? dom.heroPlayBtn : dom.heroInfoBtn;
 
-  // Configuración y Autenticación con PIN
-  if (dom.configMenuBtn) {
-    dom.configMenuBtn.addEventListener('click', (e) => {
-      e.preventDefault();
-      openPinModal();
-    });
-  }
-
-  if (dom.pinCloseBtn) dom.pinCloseBtn.addEventListener('click', closePinModal);
-  if (dom.pinCancelBtn) dom.pinCancelBtn.addEventListener('click', closePinModal);
-
-  if (dom.pinForm) {
-    dom.pinForm.addEventListener('submit', (e) => {
-      e.preventDefault();
-      verifyPin();
-    });
-  }
-
-  if (dom.pinSubmitBtn) {
-    dom.pinSubmitBtn.addEventListener('click', (e) => {
-      e.preventDefault();
-      verifyPin();
-    });
-  }
-
-  if (dom.pinInput) {
-    dom.pinInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        verifyPin();
-      }
-    });
-  }
-
-  if (dom.pinModal) {
-    dom.pinModal.addEventListener('click', (e) => {
-      if (e.target === dom.pinModal) closePinModal();
-    });
-  }
-
-  if (dom.settingsCloseBtn) {
-    dom.settingsCloseBtn.addEventListener('click', closeSettingsModal);
-  }
-
-  if (dom.settingsModal) {
-    dom.settingsModal.addEventListener('click', (e) => {
-      if (e.target === dom.settingsModal) closeSettingsModal();
-    });
-  }
-
-  // ============================================================================
-  // Scroll Dinámico del Header (Smart Sticky Navbar con Auto-hide on Scroll Down)
-  // ============================================================================
-  let lastScrollY = Math.max(0, window.scrollY || 0);
-  const scrollCompactThreshold = 50;  // Umbral para transición a modo compacto
-  const scrollHideThreshold = 120;     // Distancia mínima antes de permitir auto-ocultamiento
-  const scrollDeltaThreshold = 6;      // Tolerancia mínima para filtrar micro-scrolls
-
-  const handleHeaderScroll = () => {
-    const currentScrollY = Math.max(0, window.scrollY || 0);
-    const deltaY = currentScrollY - lastScrollY;
-
-    // 1. Estado inicial al tope de la página
-    if (currentScrollY <= 15) {
-      if (dom.header) {
-        dom.header.classList.remove('header-scrolled', 'scrolled', 'header-hidden');
-      }
-      document.body.classList.remove('header-scrolled', 'header-hidden');
-      lastScrollY = currentScrollY;
+    if (item.isLiveChannel) {
+      openLiveChannel(item);
       return;
     }
+    const data = normalizeItem(item);
+    if (data) openMediaModal(data.id, data.mediaType, autoPlay);
+  };
 
-    // 2. Estado compacto: activa cuando supera el umbral de inicio de scroll
-    const isCompact = currentScrollY > scrollCompactThreshold;
-    if (dom.header) {
-      dom.header.classList.toggle('header-scrolled', isCompact);
-      dom.header.classList.toggle('scrolled', isCompact);
-    }
-    document.body.classList.toggle('header-scrolled', isCompact);
+  onActivate(dom.heroPlayBtn, () => openFromHero(true));
+  onActivate(dom.heroInfoBtn, () => openFromHero(false));
 
-    // 3. Ocultamiento inteligente por dirección de scroll (Auto-hide on Scroll Down)
-    if (isCompact && currentScrollY > scrollHideThreshold) {
-      if (deltaY > scrollDeltaThreshold) {
-        // Desplazamiento hacia abajo (Scroll Down): ocultar Header hacia arriba
-        if (dom.header) dom.header.classList.add('header-hidden');
-        document.body.classList.add('header-hidden');
-      } else if (deltaY < -scrollDeltaThreshold) {
-        // Desplazamiento hacia arriba (Scroll Up): mostrar Header compacto de inmediato
-        if (dom.header) dom.header.classList.remove('header-hidden');
-        document.body.classList.remove('header-hidden');
-      }
+  onActivate(dom.modalPlayBtn, () => {
+    const details = state.activeItemDetails;
+    if (!details) return;
+
+    const title = dom.modalTitle.textContent;
+    if (details.media_type === 'movie') {
+      startPlayback({ type: 'movie', id: details.id, title });
     } else {
-      // Cerca del tope: mantener siempre visible
-      if (dom.header) dom.header.classList.remove('header-hidden');
-      document.body.classList.remove('header-hidden');
-    }
-
-    lastScrollY = currentScrollY;
-  };
-
-  window.addEventListener('scroll', handleHeaderScroll, { passive: true });
-  handleHeaderScroll();
-
-  // Accesibilidad Smart TV / Teclado: Si cualquier elemento dentro del Header recibe foco, mostrar el navbar
-  if (dom.header) {
-    dom.header.addEventListener('focusin', () => {
-      dom.header.classList.remove('header-hidden');
-      document.body.classList.remove('header-hidden');
-    });
-  }
-
-  // Sincronización al salir de pantalla completa de forma nativa (teclado / control remoto)
-  document.addEventListener('fullscreenchange', () => {
-    if (!document.fullscreenElement && !dom.modalPlayerSection.classList.contains('hidden')) {
-      focusAndCenter(dom.serverSelect);
+      const season = state.activeSeason || 1;
+      startPlayback({
+        type: 'tv', id: details.id, season, episode: 1,
+        title: `${title} Â· T${season}:E1`
+      });
     }
   });
 
-  document.addEventListener('webkitfullscreenchange', () => {
-    if (!document.webkitFullscreenElement && !dom.modalPlayerSection.classList.contains('hidden')) {
-      focusAndCenter(dom.serverSelect);
-    }
-  });
+  /* --- Comportamiento del header --- */
+  setupHeaderScrollBehavior();
 
-  // Reaparición inmediata de la barra de controles al interactuar (Mouse, Touch, Teclado/TV)
-  const handlePlayerUserActivity = () => {
-    if (isPlayerActive()) {
-      resetPlayerControlsTimer();
-    }
+  /* --- Salida nativa de pantalla completa --- */
+  const onFullscreenExit = () => {
+    const stillFull = document.fullscreenElement || document.webkitFullscreenElement;
+    if (stillFull || !isPlayerActive()) return;
+    focusAndCenter(dom.serverBtnGroup?.querySelector('.server-btn.active') ||
+      dom.playerCloseViewBtn);
   };
+  document.addEventListener('fullscreenchange', onFullscreenExit);
+  document.addEventListener('webkitfullscreenchange', onFullscreenExit);
 
-  window.addEventListener('mousemove', handlePlayerUserActivity, { passive: true });
-  window.addEventListener('touchstart', handlePlayerUserActivity, { passive: true });
-  window.addEventListener('keydown', handlePlayerUserActivity, { passive: true });
+  /* --- ReapariciÃ³n de los controles del reproductor --- */
+  const wakeControls = () => {
+    if (isPlayerActive()) resetPlayerControlsTimer();
+  };
+  window.addEventListener('mousemove', wakeControls, { passive: true });
+  window.addEventListener('touchstart', wakeControls, { passive: true });
+  dom.modalPlayerSection?.addEventListener('click', wakeControls);
 
-  if (dom.modalPlayerSection) {
-    dom.modalPlayerSection.addEventListener('mousemove', handlePlayerUserActivity, { passive: true });
-    dom.modalPlayerSection.addEventListener('touchstart', handlePlayerUserActivity, { passive: true });
-    dom.modalPlayerSection.addEventListener('click', handlePlayerUserActivity);
-  }
-
-  if (dom.playerTopBar) {
-    dom.playerTopBar.addEventListener('focusin', () => {
-      showPlayerControls();
-      if (playerControlsTimer) {
-        clearTimeout(playerControlsTimer);
-        playerControlsTimer = null;
-      }
-    });
-
-    dom.playerTopBar.addEventListener('focusout', () => {
-      if (isPlayerActive()) {
-        resetPlayerControlsTimer();
-      }
-    });
-  }
+  dom.playerTopBar?.addEventListener('focusin', () => {
+    showPlayerControls();
+    clearTimeout(playerControlsTimer);
+  });
+  dom.playerTopBar?.addEventListener('focusout', () => {
+    if (isPlayerActive()) resetPlayerControlsTimer();
+  });
 }
 
-// ============================================================================
-// 13. INICIALIZACIÓN
-// ============================================================================
+/* ==========================================================================
+ * 23. ARRANQUE
+ * ========================================================================== */
 
 document.addEventListener('DOMContentLoaded', () => {
-  updateApiKeyStatus();
   setupEventListeners();
   loadActiveTab('movie', 1);
 
-  // Dar foco inicial amigable para Smart TV tras carga
+  // Foco inicial en la pestaÃ±a activa: en TV es el punto de partida del D-Pad.
   setTimeout(() => {
-    const activeTab = document.querySelector('.nav-tab-btn.active') || dom.heroPlayBtn;
-    if (activeTab) activeTab.focus();
+    const start = document.querySelector('.nav-tab-btn.active') || dom.heroPlayBtn;
+    if (start) start.focus({ preventScroll: true });
   }, 350);
+});
+
+// Expuesto para depuraciÃ³n en consola.
+window.Peloflix = { state, CONFIG, DEMO_ITEMS, LIVE_CHANNELS };
+
+/* ==========================================================================
+   PREMIUM ANIMATIONS (SCROLL REVEAL)
+   ========================================================================== */
+document.addEventListener('DOMContentLoaded', () => {
+  const rows = document.querySelectorAll('.content-row');
+  
+  // Agregar clase inicial para que estén ocultos
+  rows.forEach(row => row.classList.add('fade-row'));
+
+  const observerOptions = {
+    root: null,
+    rootMargin: '0px',
+    threshold: 0.15
+  };
+
+  const rowObserver = new IntersectionObserver((entries, observer) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('visible');
+        observer.unobserve(entry.target);
+      }
+    });
+  }, observerOptions);
+
+  rows.forEach(row => {
+    rowObserver.observe(row);
+  });
+});
+
+/* ==========================================================================
+   NATIVE VIDEO PLAYER LOGIC
+   ========================================================================== */
+document.addEventListener('DOMContentLoaded', () => {
+  const playerSection = document.getElementById('player-section');
+  const heroPlayBtn = document.getElementById('hero-play-btn');
+  const mainPlayer = document.getElementById('main-player');
+
+  if (heroPlayBtn && playerSection) {
+    heroPlayBtn.addEventListener('click', (e) => {
+      e.preventDefault(); 
+      playerSection.classList.remove('hidden');
+      setTimeout(() => {
+        playerSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        if (mainPlayer) {
+          mainPlayer.play().catch(err => console.log('Autoplay prevented by browser:', err));
+        }
+      }, 100);
+    });
+  }
+});
+
+/* ==========================================================================
+   ADVANCED SEARCH OVERLAY LOGIC
+   ========================================================================== */
+document.addEventListener('DOMContentLoaded', () => {
+  const searchOverlay = document.getElementById('search-overlay');
+  const searchInput = document.getElementById('search-overlay-input');
+  const searchCloseBtn = document.getElementById('search-close-btn');
+  const searchResults = document.getElementById('search-overlay-results');
+  const headerSearchBtn = document.getElementById('header-search-btn');
+
+  if (headerSearchBtn && searchOverlay) {
+    headerSearchBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      searchOverlay.classList.remove('hidden');
+      setTimeout(() => searchInput.focus(), 100);
+    });
+  }
+
+  if (searchCloseBtn) {
+    searchCloseBtn.addEventListener('click', () => {
+      searchOverlay.classList.add('hidden');
+      searchInput.value = '';
+      searchResults.innerHTML = '';
+    });
+  }
+
+  if (searchInput && searchResults) {
+    searchInput.addEventListener('input', (e) => {
+      const val = e.target.value.trim();
+      if (!val) {
+        searchResults.innerHTML = '';
+        return;
+      }
+      // Generar tarjetas de prueba
+      searchResults.innerHTML = `
+        <div class="media-card">
+          <div class="card-poster-wrap"><img src="https://image.tmdb.org/t/p/w500/8RpDcsfLJypbO6vtec8O51Wf6G0.jpg" class="card-poster" alt="Test"></div>
+          <div class="card-info"><h3 class="card-title">Resultado 1: ${val}</h3></div>
+        </div>
+        <div class="media-card">
+          <div class="card-poster-wrap"><img src="https://image.tmdb.org/t/p/w500/8RpDcsfLJypbO6vtec8O51Wf6G0.jpg" class="card-poster" alt="Test"></div>
+          <div class="card-info"><h3 class="card-title">Resultado 2: ${val}</h3></div>
+        </div>
+      `;
+    });
+  }
 });

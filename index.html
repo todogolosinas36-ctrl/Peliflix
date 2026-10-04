@@ -2,208 +2,184 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <meta name="description" content="PelisFlix - Streaming optimizado para Smart TV y móviles con navegación D-Pad y toque explícito.">
-  <meta name="theme-color" content="#121212">
-  <title>PelisFlix | Smart TV & Mobile Streaming</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Peloflix — películas y series ilimitadas. Streaming optimizado para Smart TV y móviles.">
+  <meta name="theme-color" content="#141414">
+  <meta name="color-scheme" content="dark">
 
-  <!-- Google Fonts: Montserrat & Outfit -->
+  <!-- Marca -->
+  <title>Peloflix | Películas y Series Ilimitadas</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%23E50914'/><text x='16' y='23' font-family='Arial,sans-serif' font-size='20' font-weight='bold' fill='%23fff' text-anchor='middle'>P</text></svg>">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Peloflix">
+  <meta property="og:title" content="Peloflix | Películas y Series Ilimitadas">
+  <meta property="og:description" content="Streaming optimizado para Smart TV y dispositivos móviles.">
+
+  <!-- Tipografía: Montserrat en todo el sitio -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 
-  <!-- Font Awesome para Iconografía -->
+  <!-- Iconografía -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 
-  <!-- Estilos Principales -->
+  <!-- Sistema de diseño (único archivo, sin capas de override) -->
   <link rel="stylesheet" href="styles.css">
 
-  <!-- HLS.js para reproducción de transmisiones IPTV / TV en Vivo -->
-  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+  <!-- HLS.js para TV en vivo (se carga bajo demanda desde app.js) -->
 </head>
-<body class="tv-mode">
+<body>
 
-  <!-- Overlay para cerrar el menú lateral en Smart TV y móviles -->
-  <div id="sidebar-overlay" class="sidebar-overlay hidden" aria-hidden="true"></div>
+  <noscript>
+    <div style="padding:40px;text-align:center;font-family:sans-serif;color:#fff;background:#141414">
+      <h1>Peloflix necesita JavaScript</h1>
+      <p style="color:#b3b3b3">Actívalo en tu navegador para empezar a ver películas y series.</p>
+    </div>
+  </noscript>
 
-  <!-- HEADER PRINCIPAL (10-FOOT UI READY) -->
+  <!-- ==========================================================================
+       HEADER
+       ========================================================================== -->
   <header id="main-header" class="header">
     <div class="header-container">
-      
-      <!-- Indicador izquierdo de calidad / estado -->
-      <div class="header-left">
-        <span class="header-tagline">
-          <i class="fa-solid fa-tv"></i> TV & Mobile Ready
-        </span>
-      </div>
 
-      <!-- Logotipo Estrictamente Centrado Horizontalmente -->
-      <a href="#" class="brand-logo" id="brand-logo" tabindex="0" title="PelisFlix Inicio" aria-label="Ir al inicio de PelisFlix">
-        <div class="logo-icon">
-          <i class="fa-solid fa-film"></i>
-        </div>
-        <span class="logo-text">Pelis<span>Flix</span></span>
+      <a href="#" class="brand-logo" id="brand-logo" tabindex="0" aria-label="Peloflix, ir al inicio">
+        <span class="logo-text">Peloflix</span>
       </a>
 
-      <!-- Botones del Header Accesibles para Control Remoto y Toque -->
+      <nav class="sub-navbar" id="sub-navbar" aria-label="Categorías">
+        <div class="sub-navbar-container">
+          <button class="nav-tab-btn active" data-category="movie" tabindex="0">Películas</button>
+          <button class="nav-tab-btn" data-category="tv" tabindex="0">Series</button>
+          <button class="nav-tab-btn" data-category="anime" tabindex="0">Anime</button>
+          <button class="nav-tab-btn" data-category="cartoons" tabindex="0">Dibujos Animados</button>
+          <button class="nav-tab-btn" data-category="live" tabindex="0">TV en Vivo</button>
+        </div>
+      </nav>
+
       <div class="header-right">
-        <button id="header-search-btn" class="header-search-btn" tabindex="0" aria-label="Abrir buscador de películas y series" title="Buscar">
-          <i class="fa-solid fa-magnifying-glass"></i>
-          <span class="search-btn-text">Buscar</span>
+        <button id="header-search-btn" class="header-search-btn" tabindex="0" aria-label="Buscar películas y series" title="Buscar">
+          <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
         </button>
-        <button id="sidebar-toggle-btn" class="sidebar-toggle-btn" tabindex="0" aria-label="Abrir menú de navegación" title="Abrir menú">
-          <i class="fa-solid fa-bars"></i>
-          <span class="toggle-btn-text">Menú</span>
-        </button>
+        <a href="config.html" id="header-settings-btn" class="header-settings-btn" tabindex="0" aria-label="Configuración" title="Ajustes">
+          <i class="fa-solid fa-gear" aria-hidden="true"></i>
+        </a>
       </div>
     </div>
-
-    <!-- SUB-NAVBAR: BARRA DE PESTAÑAS HORIZONTAL (PELÍCULAS, SERIES, ANIME, DIBUJOS ANIMADOS) -->
-    <nav class="sub-navbar" id="sub-navbar" aria-label="Navegación principal por categorías">
-      <div class="sub-navbar-container">
-        <button class="nav-tab-btn active" data-category="movie" tabindex="0">
-          <i class="fa-solid fa-film"></i>
-          <span>Películas</span>
-        </button>
-        <button class="nav-tab-btn" data-category="tv" tabindex="0">
-          <i class="fa-solid fa-tv"></i>
-          <span>Series</span>
-        </button>
-        <button class="nav-tab-btn" data-category="anime" tabindex="0">
-          <i class="fa-solid fa-dragon"></i>
-          <span>Anime</span>
-        </button>
-        <button class="nav-tab-btn" data-category="cartoons" tabindex="0">
-          <i class="fa-solid fa-shapes"></i>
-          <span>Dibujos Animados</span>
-        </button>
-        <button class="nav-tab-btn" data-category="live" tabindex="0">
-          <i class="fa-solid fa-tower-broadcast"></i>
-          <span>TV en Vivo</span>
-        </button>
-      </div>
-    </nav>
   </header>
 
-  <!-- ÁREA PRINCIPAL DE CONTENIDO (FULL WIDTH) -->
   <main class="main-content" id="main-content">
-    
-    <!-- Hero Banner (Destacado Cinematográfico) -->
+
+    <!-- ========================================================================
+         HERO
+         ======================================================================== -->
     <section id="hero-banner" class="hero-banner">
       <div class="hero-backdrop" id="hero-backdrop"></div>
       <div class="hero-overlay"></div>
       <div class="hero-content">
-        <div class="hero-badge" id="hero-badge">
-          <i class="fa-solid fa-fire"></i> Destacado de hoy
-        </div>
-        <h1 class="hero-title" id="hero-title">Cargando título...</h1>
+        <h1 class="hero-title" id="hero-title">Cargando título…</h1>
         <div class="hero-meta" id="hero-meta">
-          <span class="hero-rating"><i class="fa-solid fa-star"></i> --</span>
-          <span class="hero-year">----</span>
+          <span class="hero-rating"><i class="fa-solid fa-star" aria-hidden="true"></i> —</span>
+          <span class="hero-year">—</span>
           <span class="hero-type-badge">Película</span>
         </div>
         <p class="hero-overview" id="hero-overview">
-          Explora las mejores películas y series en alta definición adaptadas para Smart TV y dispositivos móviles.
+          Explora las mejores películas y series en alta definición, adaptadas para Smart TV y dispositivos móviles.
         </p>
         <div class="hero-actions">
           <button id="hero-play-btn" class="btn btn-primary btn-lg" tabindex="0">
-            <i class="fa-solid fa-play"></i> Reproducir Ahora
+            <i class="fa-solid fa-play" aria-hidden="true"></i> Reproducir
           </button>
           <button id="hero-info-btn" class="btn btn-secondary btn-lg" tabindex="0">
-            <i class="fa-solid fa-circle-info"></i> Más Detalles
+            <i class="fa-solid fa-circle-info" aria-hidden="true"></i> Más información
           </button>
         </div>
       </div>
     </section>
 
-    <!-- ================================================================
-         LAYOUT NETFLIX: FILAS HORIZONTALES (Solo Pestaña Películas)
-         ================================================================ -->
-    <section id="home-rows-container" class="home-rows-container">
-
-      <!-- Fila 1: Estrenos 2026 -->
-      <div class="content-row" id="row-estrenos">
-        <div class="row-header">
-          <h2 class="row-title"><i class="fa-solid fa-star"></i> Películas Estrenos 2026</h2>
-        </div>
-        <div class="row-scroll" id="row-scroll-estrenos" role="list" aria-label="Estrenos 2026">
-          <!-- Tarjetas inyectadas desde JS -->
-        </div>
-      </div>
-
-      <!-- Fila 2: Acción Sin Límites -->
-      <div class="content-row" id="row-accion">
-        <div class="row-header">
-          <h2 class="row-title"><i class="fa-solid fa-explosion"></i> Acción Sin Límites</h2>
-        </div>
-        <div class="row-scroll" id="row-scroll-accion" role="list" aria-label="Acción Sin Límites">
-          <!-- Tarjetas inyectadas desde JS -->
-        </div>
-      </div>
-
-      <!-- Fila 3: Comedia para Reír -->
-      <div class="content-row" id="row-comedia">
-        <div class="row-header">
-          <h2 class="row-title"><i class="fa-solid fa-face-laugh-squint"></i> Comedia para Reír</h2>
-        </div>
-        <div class="row-scroll" id="row-scroll-comedia" role="list" aria-label="Comedia para Reír">
-          <!-- Tarjetas inyectadas desde JS -->
-        </div>
-      </div>
-
-      <!-- Fila 4: Terror y Suspenso -->
-      <div class="content-row" id="row-terror">
-        <div class="row-header">
-          <h2 class="row-title"><i class="fa-solid fa-ghost"></i> Terror y Suspenso</h2>
-        </div>
-        <div class="row-scroll" id="row-scroll-terror" role="list" aria-label="Terror y Suspenso">
-          <!-- Tarjetas inyectadas desde JS -->
-        </div>
-      </div>
-
-      <!-- Botón Ver Todas las Categorías -->
-      <div class="explore-btn-wrapper">
-        <button id="explore-all-btn" class="btn btn-secondary explore-btn" tabindex="0">
-          <i class="fa-solid fa-compass"></i> Ver Todas las Categorías
-        </button>
+    <!-- ========================================================================
+         REPRODUCTOR DE VIDEO (NATIVO)
+         ======================================================================== -->
+    <section id="player-section" class="player-section hidden">
+      <div class="native-player-container">
+        <video id="main-player" controls width="100%" poster="https://image.tmdb.org/t/p/original/8RpDcsfLJypbO6vtec8O51Wf6G0.jpg">
+            <source src="demo-video.mp4" type="video/mp4">
+            Tu navegador no soporta el elemento de video nativo.
+        </video>
       </div>
     </section>
 
-    <!-- ================================================================
-         EXPLORADOR DE CATEGORÍAS (GÉNEROS TMDB)
-         ================================================================ -->
+    <!-- ========================================================================
+         FILAS HORIZONTALES (PELÍCULAS)
+         ======================================================================== -->
+    <section id="home-rows-container" class="home-rows-container">
+
+      <div class="content-row">
+        <div class="row-header">
+          <h2 class="row-title">Películas Estrenos <span id="row-year-label"></span></h2>
+        </div>
+        <div class="row-scroll" id="row-scroll-estrenos" aria-label="Estrenos"></div>
+      </div>
+
+      <div class="content-row">
+        <div class="row-header">
+          <h2 class="row-title">Acción Sin Límites</h2>
+        </div>
+        <div class="row-scroll" id="row-scroll-accion" aria-label="Acción"></div>
+      </div>
+
+      <div class="content-row">
+        <div class="row-header">
+          <h2 class="row-title">Comedia para Reír</h2>
+        </div>
+        <div class="row-scroll" id="row-scroll-comedia" aria-label="Comedia"></div>
+      </div>
+
+      <div class="content-row">
+        <div class="row-header">
+          <h2 class="row-title">Terror y Suspenso</h2>
+        </div>
+        <div class="row-scroll" id="row-scroll-terror" aria-label="Terror"></div>
+      </div>
+
+
+    </section>
+
+    <!-- ========================================================================
+         EXPLORADOR DE GÉNEROS
+         ======================================================================== -->
     <section id="category-explorer" class="category-explorer hidden">
       <div class="explorer-header">
-        <h2 class="explorer-title"><i class="fa-solid fa-layer-group"></i> Explorador de Categorías</h2>
+        <h2 class="explorer-title">
+          <i class="fa-solid fa-layer-group" aria-hidden="true"></i> Explorador de Categorías
+        </h2>
         <button id="explorer-back-btn" class="btn btn-ghost btn-sm" tabindex="0">
-          <i class="fa-solid fa-arrow-left"></i> Volver al Inicio
+          <i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Volver al Inicio
         </button>
       </div>
 
-      <!-- Botonera de Géneros -->
-      <div class="genre-btn-grid" id="genre-btn-grid" role="list" aria-label="Filtrar por género">
-        <!-- Botones de género inyectados desde JS -->
-      </div>
+      <div class="genre-btn-grid" id="genre-btn-grid" aria-label="Filtrar por género"></div>
 
-      <!-- Grilla de resultados filtrados -->
       <div class="explorer-results">
         <h3 id="explorer-results-title" class="explorer-results-title">Selecciona un género para explorar</h3>
         <div id="explorer-loader" class="loader-container hidden">
           <div class="spinner"></div>
-          <p>Cargando películas...</p>
+          <p>Cargando películas…</p>
         </div>
-        <div id="explore-grid" class="media-grid" role="grid" aria-label="Resultados del explorador">
-          <!-- Tarjetas dinámicas -->
-        </div>
+        <div id="explore-grid" class="media-grid" aria-label="Resultados del explorador"></div>
         <div class="load-more-wrapper">
           <button id="explore-load-more-btn" class="btn btn-secondary load-more-btn hidden" tabindex="0">
-            <i class="fa-solid fa-angle-down"></i> Cargar más títulos
+            <i class="fa-solid fa-angle-down" aria-hidden="true"></i> Cargar más títulos
           </button>
         </div>
       </div>
     </section>
 
-    <!-- Catálogo y Grilla de Tarjetas (Para Series, Anime, Cartoons, Live, Búsqueda) -->
+    <!-- ========================================================================
+         CATÁLOGO (Series / Anime / Dibujos / TV en vivo)
+         ======================================================================== -->
     <section id="catalog-section" class="catalog-container">
       <div class="section-header">
         <div class="section-title-group">
@@ -213,38 +189,34 @@
         <div class="results-count" id="results-count"></div>
       </div>
 
-      <!-- Grilla de Tarjetas Accesibles (D-Pad Ready) -->
-      <div id="media-grid" class="media-grid" role="grid" aria-label="Catálogo de Películas y Series">
-        <!-- Tarjetas dinámicas inyectadas desde app.js -->
-      </div>
+      <div id="media-grid" class="media-grid" aria-label="Catálogo de películas y series"></div>
 
-      <!-- Indicador de Carga -->
       <div id="loader" class="loader-container hidden">
         <div class="spinner"></div>
-        <p>Cargando títulos en PelisFlix...</p>
+        <p>Cargando títulos…</p>
       </div>
 
-      <!-- Botón Cargar Más -->
       <div class="load-more-wrapper">
         <button id="load-more-btn" class="btn btn-secondary load-more-btn hidden" tabindex="0">
-          <i class="fa-solid fa-angle-down"></i> Cargar más títulos
+          <i class="fa-solid fa-angle-down" aria-hidden="true"></i> Cargar más títulos
         </button>
       </div>
     </section>
 
-    <!-- Footer -->
+    <!-- ========================================================================
+         FOOTER
+         ======================================================================== -->
     <footer class="footer">
       <div class="footer-content">
-        <div class="footer-logo">
-          <i class="fa-solid fa-film"></i> Pelis<span>Flix</span>
-        </div>
+        <div class="footer-logo">PELOFLIX</div>
         <p class="footer-disclaimer">
-          Compatible con control remoto Smart TV (D-Pad, OK/Enter, Volver) y pantallas táctiles móviles. Sin dependencias de mouse hover.
-          Metadatos provistos por <a href="https://www.themoviedb.org/" target="_blank" rel="noopener">TMDb</a>.
+          Compatible con control remoto Smart TV (D-Pad, OK/Enter, Volver) y pantallas táctiles.
+          Sin dependencias de hover. Metadatos provistos por
+          <a href="https://www.themoviedb.org/" target="_blank" rel="noopener noreferrer">TMDb</a>.
         </p>
         <div class="footer-badges">
-          <span class="tech-tag"><i class="fa-solid fa-tv"></i> Smart TV (D-Pad)</span>
-          <span class="tech-tag"><i class="fa-solid fa-mobile-screen"></i> Mobile Touch</span>
+          <span class="tech-tag"><i class="fa-solid fa-tv" aria-hidden="true"></i> Smart TV (D-Pad)</span>
+          <span class="tech-tag"><i class="fa-solid fa-mobile-screen" aria-hidden="true"></i> Mobile Touch</span>
           <span class="tech-tag">HTML5 / CSS3</span>
           <span class="tech-tag">TMDb v3</span>
         </div>
@@ -252,376 +224,203 @@
     </footer>
   </main>
 
-  <!-- PANEL LATERAL DE NAVEGACIÓN (APERTURA 100% EXPLÍCITA, SIN HOVER) -->
-  <aside id="right-sidebar" class="right-sidebar" aria-label="Panel de navegación lateral">
-    
-    <!-- Pestaña lateral accesible mediante clic o control remoto -->
-    <div class="sidebar-edge-tab" id="sidebar-edge-tab" tabindex="0" role="button" aria-label="Alternar menú lateral" title="Abrir Menú">
-      <i class="fa-solid fa-chevron-left tab-arrow"></i>
-      <span class="tab-label">MENÚ</span>
-    </div>
-
-    <!-- Contenido Interno del Sidebar -->
-    <div class="sidebar-inner">
-      <div class="sidebar-header">
-        <div class="sidebar-header-title">
-          <i class="fa-solid fa-compass"></i>
-          <span>Menú de Navegación</span>
-        </div>
-        <button id="sidebar-close-btn" class="sidebar-close-btn" tabindex="0" aria-label="Cerrar panel lateral" title="Cerrar">
-          <i class="fa-solid fa-xmark"></i>
-        </button>
-      </div>
-
-      <div class="sidebar-scrollable-content">
-        <!-- 1. Accesos Secundarios de Navegación -->
-        <section class="sidebar-section">
-          <h3 class="sidebar-section-title">Navegación y Utilidades</h3>
-          <nav class="sidebar-nav" role="navigation">
-            <button class="sidebar-nav-btn" id="sidebar-search-btn" tabindex="0">
-              <i class="fa-solid fa-magnifying-glass"></i>
-              <span>Abrir Buscador</span>
-            </button>
-          </nav>
-        </section>
-
-        <!-- 2. Apartado de Configuración Protegido por PIN -->
-        <section class="sidebar-section sidebar-settings-section">
-          <h3 class="sidebar-section-title">Administración</h3>
-          <button class="sidebar-nav-btn config-btn" id="config-menu-btn" tabindex="0">
-            <i class="fa-solid fa-gear"></i>
-            <span>Configuración</span>
-          </button>
-        </section>
-
-        <!-- 3. Información del Sistema y Dispositivo -->
-        <section class="sidebar-section">
-          <h3 class="sidebar-section-title">Dispositivo y Sistema</h3>
-          <div class="sidebar-info-card">
-            <div class="info-row">
-              <i class="fa-solid fa-tv"></i>
-              <span>Smart TV (D-Pad Ready)</span>
-            </div>
-            <div class="info-row">
-              <i class="fa-solid fa-mobile-screen"></i>
-              <span>Mobile Touch Ready</span>
-            </div>
-            <div class="info-row">
-              <i class="fa-solid fa-shield-halved"></i>
-              <span>Seguridad PIN: Pia26</span>
-            </div>
-            <div class="info-row">
-              <i class="fa-solid fa-circle-check"></i>
-              <span>Versión PelisFlix v2.5</span>
-            </div>
-          </div>
-        </section>
-      </div>
-    </div>
-  </aside>
-
-  <!-- MODAL DEDICADO DE BÚSQUEDA FLOTANTE (SMART TV & MÓVILES) -->
+  <!-- ==========================================================================
+       MODAL: BÚSQUEDA
+       ========================================================================== -->
   <div id="search-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="search-modal-title">
     <div class="modal-dialog search-dialog" tabindex="-1">
       <div class="search-modal-header">
         <div class="search-input-wrapper">
           <i class="fa-solid fa-magnifying-glass search-input-icon" aria-hidden="true"></i>
-          <input 
-            type="text" 
-            id="modal-search-input" 
-            class="modal-search-input" 
-            placeholder="Buscar películas, series, actores..." 
+          <label for="modal-search-input" id="search-modal-title" class="visually-hidden">Buscar películas y series</label>
+          <input
+            type="search"
+            id="modal-search-input"
+            class="modal-search-input"
+            placeholder="Buscar películas, series, actores…"
             autocomplete="off"
-            autofocus
+            autocapitalize="off"
+            spellcheck="false"
             tabindex="0"
-            aria-label="Escribe para buscar películas y series"
-          />
+          >
           <button id="modal-clear-search-btn" class="modal-clear-search-btn hidden" tabindex="0" aria-label="Limpiar búsqueda" title="Borrar texto">
-            <i class="fa-solid fa-xmark"></i>
+            <i class="fa-solid fa-xmark" aria-hidden="true"></i>
           </button>
         </div>
-        <button id="search-modal-close-btn" class="modal-close-btn search-close-btn" tabindex="0" aria-label="Cerrar búsqueda (o presiona Escape / Volver)" title="Cerrar">
-          <i class="fa-solid fa-xmark"></i>
+        <button id="search-modal-close-btn" class="modal-close-btn search-close-btn" tabindex="0" aria-label="Cerrar búsqueda" title="Cerrar">
+          <i class="fa-solid fa-xmark" aria-hidden="true"></i>
         </button>
       </div>
 
-      <!-- Barra de estado y cargador -->
       <div class="search-meta-bar">
-        <span id="search-status-text" class="search-status-text">
-          <i class="fa-solid fa-compass"></i> Ingresa un término para comenzar a buscar
+        <span id="search-status-text" class="search-status-text" role="status" aria-live="polite">
+          <i class="fa-solid fa-compass" aria-hidden="true"></i> Ingresa un término para comenzar a buscar
         </span>
         <div id="search-modal-loader" class="search-modal-loader hidden">
           <div class="spinner-small"></div>
-          <span>Buscando en PelisFlix...</span>
+          <span>Buscando…</span>
         </div>
       </div>
 
-      <!-- Contenedor con grilla responsiva de resultados -->
       <div class="search-results-wrapper">
-        <div id="search-results-grid" class="search-results-grid" role="grid" aria-label="Resultados de búsqueda">
-          <!-- Tarjetas generadas dinámicamente -->
-        </div>
+        <div id="search-results-grid" class="search-results-grid" aria-label="Resultados de búsqueda"></div>
       </div>
     </div>
   </div>
 
-  <!-- MODAL 1: AUTENTICACIÓN POR PIN/CONTRASEÑA ("Pia26") -->
-  <div id="pin-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="pin-modal-title">
-    <div class="modal-dialog auth-dialog" tabindex="-1">
-      <button id="pin-close-btn" class="modal-close-btn" tabindex="0" aria-label="Cerrar ventana de autenticación">
-        <i class="fa-solid fa-xmark"></i>
+  <!-- ==========================================================================
+       MODAL: DETALLE + REPRODUCTOR
+       ========================================================================== -->
+  <div id="media-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div class="modal-dialog" tabindex="-1">
+      <button id="modal-close-btn" class="modal-close-btn" tabindex="0" aria-label="Cerrar">
+        <i class="fa-solid fa-xmark" aria-hidden="true"></i>
       </button>
 
-      <div class="auth-box">
-        <div class="auth-icon-circle">
-          <i class="fa-solid fa-lock"></i>
-        </div>
-        <h2 id="pin-modal-title" class="auth-title">Acceso Protegido</h2>
-        <p class="auth-desc">
-          Introduce la contraseña de seguridad para acceder a la configuración de la API y ajustes del sistema.
-        </p>
-
-        <form id="pin-form" class="auth-form" onsubmit="return false;">
-          <div class="auth-input-group">
-            <label for="pin-input" class="auth-label">Contraseña de Administrador:</label>
-            <input 
-              type="password" 
-              id="pin-input" 
-              class="auth-input" 
-              placeholder="Ingresa la contraseña..." 
-              autocomplete="off" 
-              tabindex="0"
-            />
+      <!-- Reproductor -->
+      <div id="modal-player-section" class="modal-player-section hidden">
+        <div class="player-top-bar" id="player-top-bar">
+          <div class="player-title-info">
+            <span class="player-label"><i class="fa-solid fa-circle-play" aria-hidden="true"></i> Reproduciendo</span>
+            <span class="player-playing-title" id="player-playing-title">Título</span>
           </div>
 
-          <div id="pin-error" class="auth-error-msg hidden" role="alert">
-            <i class="fa-solid fa-circle-exclamation"></i>
-            <span>Contraseña Incorrecta</span>
-          </div>
+          <div class="server-control-group">
+            <div class="server-badge-wrapper">
+              <span id="server-active-badge" class="server-active-badge">
+                <i class="fa-solid fa-language" aria-hidden="true"></i>
+                <span id="server-badge-text">UNLIMPLAY</span>
+              </span>
+            </div>
 
-          <div class="auth-actions">
-            <button type="submit" id="pin-submit-btn" class="btn btn-primary btn-lg" tabindex="0">
-              <i class="fa-solid fa-unlock"></i> Desbloquear
-            </button>
-            <button type="button" id="pin-cancel-btn" class="btn btn-ghost" tabindex="0">
-              Cancelar
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  </div>
-
-  <!-- MODAL 2: AJUSTES / CONFIGURACIÓN DE API KEY (PROTEGIDO) -->
-  <div id="settings-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="settings-modal-title">
-    <div class="modal-dialog settings-dialog" tabindex="-1">
-      <button id="settings-close-btn" class="modal-close-btn" tabindex="0" aria-label="Cerrar configuración">
-        <i class="fa-solid fa-xmark"></i>
-      </button>
-
-      <div class="settings-box">
-        <div class="settings-header">
-          <div class="settings-icon-title">
-            <i class="fa-solid fa-gear"></i>
-            <h2 id="settings-modal-title">Configuración de PelisFlix</h2>
-          </div>
-          <span id="api-status-badge" class="api-status-badge badge-demo">Modo Demo</span>
-        </div>
-
-        <div class="settings-body">
-          <div class="settings-card">
-            <h3 class="settings-card-title">
-              <i class="fa-solid fa-key"></i> Clave de API TMDb (v3)
-            </h3>
-            <p class="settings-card-desc">
-              Conecta tu propia API Key de The Movie Database para obtener títulos, carátulas HD y sinopsis en español actualizadas en tiempo real.
-            </p>
-
-            <div class="settings-input-group">
-              <input 
-                type="text" 
-                id="api-key-input" 
-                class="settings-input" 
-                placeholder="Pega tu API Key de TMDb aquí..." 
-                tabindex="0"
-                aria-label="Clave de API TMDb"
-              />
-              <div class="settings-btn-row">
-                <button id="save-api-key-btn" class="btn btn-primary btn-lg" tabindex="0">
-                  <i class="fa-solid fa-floppy-disk"></i> Guardar Clave
+            <div class="video-sources-container" id="video-sources-container">
+              <h3 class="video-sources-title"><span class="vertical-line"></span> Fuentes de vídeo</h3>
+              <div class="server-btn-group" id="server-btn-group">
+                <button class="server-btn active" data-server="unlimplay" tabindex="0">
+                  <span class="server-btn-icon" aria-hidden="true">⚡</span>
+                  <span class="server-btn-name">UNLIMPLAY</span>
+                  <span class="server-btn-badge badge-multi">Multi</span>
                 </button>
-                <button id="clear-api-key-btn" class="btn btn-ghost" tabindex="0" title="Eliminar Clave">
-                  <i class="fa-solid fa-trash-can"></i> Restablecer
+                <button class="server-btn" data-server="embed_su" tabindex="0">
+                  <span class="server-btn-icon" aria-hidden="true">⚡</span>
+                  <span class="server-btn-name">Embed.su</span>
+                  <span class="server-btn-badge badge-multi">Multi</span>
+                </button>
+                <button class="server-btn" data-server="multiembed" tabindex="0">
+                  <span class="server-btn-icon" aria-hidden="true">⚡</span>
+                  <span class="server-btn-name">MultiEmbed</span>
+                  <span class="server-btn-badge badge-latino">Latino/Multi</span>
                 </button>
               </div>
             </div>
 
-            <div class="settings-footer-info">
-              <i class="fa-solid fa-shield-halved"></i>
-              <span>La clave se guarda de manera segura y local en este dispositivo (LocalStorage).</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- MODAL DE DETALLES Y REPRODUCTOR MULTISERVIDOR -->
-  <div id="media-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="modal-title">
-    <div class="modal-dialog" tabindex="-1">
-      <!-- Botón de Cerrar Modal -->
-      <button id="modal-close-btn" class="modal-close-btn" tabindex="0" aria-label="Cerrar modal (o presiona Volver / Escape)">
-        <i class="fa-solid fa-xmark"></i>
-      </button>
-
-      <!-- REPRODUCTOR MULTISERVIDOR EN EL MODAL -->
-      <div id="modal-player-section" class="modal-player-section hidden">
-        <div class="player-top-bar" id="player-top-bar">
-          <div class="player-title-info">
-            <span class="player-label"><i class="fa-solid fa-circle-play"></i> Reproduciendo:</span>
-            <span class="player-playing-title" id="player-playing-title">Título</span>
-          </div>
-
-          <!-- Selector de Servidores Ampliado con Soporte de Audio Latino y Subtítulos -->
-          <div class="server-control-group">
-            <div class="server-badge-wrapper">
-              <span id="server-active-badge" class="server-active-badge" title="Proveedor activo">
-                <i class="fa-solid fa-language"></i>
-                <span id="server-badge-text">Audio Latino & Sub</span>
-              </span>
-            </div>
-
-            <label for="server-select" class="server-select-label">
-              <i class="fa-solid fa-server"></i> Servidor:
-            </label>
-            <select id="server-select" class="server-select" tabindex="0" aria-label="Seleccionar servidor de reproducción">
-              <option value="vidsrc">⚡ Servidor 1 (VidSrc) - Rápido HD</option>
-              <option value="embed_su">🌐 Servidor 2 (Embed.su) - Multi-Audio & Sub</option>
-              <option value="vidsrc_pro">⭐ Servidor 3 (VidSrc PRO) - Calidad 1080p</option>
-              <option value="vidsrc_vip">🔒 Servidor 4 (VidSrc VIP) - Alta Estabilidad</option>
-              <option value="autoembed">🇲🇽 Servidor 5 (AutoEmbed) - Audio Latino & Sub</option>
-              <option value="multiembed">🇪🇸 Servidor 6 (MultiEmbed) - Español & Multi-idioma</option>
-            </select>
-            <span class="adblock-tip" title="Recomendación para evitar interrupciones">
-              <i class="fa-solid fa-shield-halved"></i>
-              <span class="adblock-tip-text">Usa Brave o uBlock para una experiencia sin anuncios</span>
-            </span>
-
-            <button id="quick-switch-server-btn" class="quick-switch-btn" tabindex="0" title="Cambiar al siguiente servidor de inmediato">
-              <i class="fa-solid fa-rotate"></i>
+            <button id="quick-switch-server-btn" class="quick-switch-btn" tabindex="0" title="Cambiar al siguiente servidor">
+              <i class="fa-solid fa-rotate" aria-hidden="true"></i>
               <span class="quick-switch-text">Cambiar</span>
             </button>
 
             <button id="player-close-view-btn" class="btn btn-ghost btn-sm" tabindex="0" title="Volver a los detalles">
-              <i class="fa-solid fa-arrow-left"></i> Detalles
+              <i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Detalles
             </button>
           </div>
         </div>
 
-        <!-- Contenedor 16:9 Adaptativo del Reproductor (Dual: Iframe Películas/Series + Video HLS.js TV en Vivo) -->
         <div class="iframe-container">
-          <iframe 
-            id="video-player" 
-            src="" 
-            frameborder="0" 
-            allowfullscreen 
+          <iframe
+            id="video-player"
+            title="Reproductor de vídeo"
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-            title="Reproductor de Streaming Multiservidor"
+            allowfullscreen
           ></iframe>
-          <video 
-            id="liveTvPlayer" 
-            controls 
-            playsinline 
-            style="width: 100%; height: 100%; display: none; background: #000; object-fit: contain;"
-          ></video>
+          <video id="liveTvPlayer" controls playsinline hidden></video>
         </div>
 
-        <div class="player-footer-hint">
-          <i class="fa-solid fa-circle-info"></i>
-          <span>¿Sin audio latino o subtítulos en español? Cambia de servidor arriba (prueba AutoEmbed o MultiEmbed). Si un servidor falla, cámbialo en cualquier momento.</span>
-        </div>
+        <p class="player-footer-hint">
+          <i class="fa-solid fa-circle-info" aria-hidden="true"></i>
+          <span>¿Sin audio latino o subtítulos en español? Cambia de servidor arriba. Si uno falla, cámbialo en cualquier momento.</span>
+        </p>
         <p class="player-adblock-notice">
-          <i class="fa-solid fa-shield-halved"></i>
-          Para una experiencia sin interrupciones, recomendamos usar navegadores con bloqueador de anuncios (Brave, uBlock).
+          <i class="fa-solid fa-shield-halved" aria-hidden="true"></i>
+          <span>Para una experiencia sin interrupciones, usa un navegador con bloqueador de anuncios.</span>
         </p>
       </div>
 
-      <!-- Cabecera Visual del Modal (Backdrop HD) -->
+      <!-- Detalle -->
       <div class="modal-hero-cover" id="modal-hero-cover">
         <div class="modal-cover-gradient"></div>
       </div>
 
-      <!-- Metadatos del Modal -->
       <div class="modal-body">
         <div class="modal-details-grid">
-          <!-- Columna Izquierda: Poster con proporciones fijas sin colisión -->
           <div class="modal-poster-wrapper">
-            <img id="modal-poster" src="" alt="Poster" class="modal-poster" />
+            <img id="modal-poster" src="" alt="" class="modal-poster">
           </div>
 
-          <!-- Columna Derecha: Información Principal y Botones de Acción -->
           <div class="modal-info">
             <h2 id="modal-title" class="modal-title">Título</h2>
             <p id="modal-tagline" class="modal-tagline"></p>
 
             <div class="modal-meta-chips">
-              <span id="modal-rating" class="meta-chip rating-chip">
-                <i class="fa-solid fa-star"></i> 8.5
-              </span>
-              <span id="modal-year" class="meta-chip">2024</span>
-              <span id="modal-duration" class="meta-chip">120 min</span>
+              <span id="modal-rating" class="meta-chip rating-chip"><i class="fa-solid fa-star" aria-hidden="true"></i> —</span>
+              <span id="modal-year" class="meta-chip">—</span>
+              <span id="modal-duration" class="meta-chip">—</span>
               <span id="modal-type" class="meta-chip type-chip">Película</span>
             </div>
 
-            <!-- Barra de Acciones del Modal: Botón Reproducir Ahora bien visible y separado -->
             <div class="modal-actions-bar">
               <button id="modal-play-btn" class="btn btn-primary btn-lg" tabindex="0">
-                <i class="fa-solid fa-play"></i> Reproducir Ahora (Pantalla Completa)
+                <i class="fa-solid fa-play" aria-hidden="true"></i> Reproducir Ahora
               </button>
             </div>
 
-            <!-- Géneros -->
             <div id="modal-genres" class="genres-container"></div>
 
-            <!-- Sinopsis -->
             <div class="modal-overview-block">
               <h3>Sinopsis</h3>
-              <p id="modal-overview" class="modal-overview">Sinopsis en español...</p>
+              <p id="modal-overview" class="modal-overview">Sinopsis en español…</p>
             </div>
           </div>
         </div>
 
-        <!-- Selector de Temporadas y Episodios (Series de TV) -->
+        <!-- Episodios -->
         <div id="modal-tv-episodes" class="tv-episodes-section hidden">
           <div class="tv-episodes-header">
-            <h3><i class="fa-solid fa-list-ol"></i> Episodios Disponibles</h3>
+            <h3><i class="fa-solid fa-list-ol" aria-hidden="true"></i> Episodis Disponibles</h3>
             <div class="season-selector-wrapper">
-              <label for="season-select">Temporada:</label>
-              <select id="season-select" class="season-select" tabindex="0" aria-label="Seleccionar temporada">
-                <!-- Opciones dinámicas -->
-              </select>
+              <label for="season-select">Temporada</label>
+              <select id="season-select" class="season-select" tabindex="0"></select>
             </div>
           </div>
 
-          <!-- Spinner de episodios -->
           <div id="episodes-loader" class="episodes-loader hidden">
             <div class="spinner-small"></div>
-            <span>Cargando episodios de la temporada...</span>
+            <span>Cargando episodios…</span>
           </div>
 
-          <!-- Lista de Episodios Accesibles -->
-          <div id="episodes-container" class="episodes-grid" role="list">
-            <!-- Cards de episodios dinámicas -->
-          </div>
+          <div id="episodes-container" class="episodes-grid" aria-label="Episodios"></div>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- Toast de Notificaciones -->
-  <div id="toast" class="toast hidden" role="alert"></div>
+  <!-- Búsqueda Avanzada (Pantalla Dividida) -->
+  <div id="search-overlay" class="search-overlay hidden">
+    <div class="search-overlay-left">
+      <button id="search-close-btn" class="search-close-btn" aria-label="Cerrar búsqueda">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+      <input type="text" id="search-overlay-input" class="search-overlay-input" placeholder="Buscar películas, series..." autocomplete="off">
+    </div>
+    <div class="search-overlay-right">
+      <div id="search-overlay-results" class="search-overlay-results media-grid">
+        <!-- Resultados inyectados por JS -->
+      </div>
+    </div>
+  </div>
 
-  <!-- Lógica Principal -->
-  <script src="app.js"></script>
+  <!-- Notificaciones -->
+  <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+
+  <script src="app.js" defer></script>
 </body>
 </html>
